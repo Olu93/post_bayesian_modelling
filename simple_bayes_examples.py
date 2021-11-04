@@ -54,21 +54,21 @@ class DiscretePredictor(Predictor):
     def __init__(self, prior_probs) -> None:
         super().__init__()
         self.prior_probs = prior_probs
-    
+
     # Prior P(θ)
-    def prior(self, **kwargs):
-        r = kwargs.get('r')
-        return self.prior_probs.get(r, 0)
+    def prior(self, *args, **kwargs):
+        theta = args[0]
+        return self.prior_probs.get(theta, 0)
 
     # Prior P(data) = ∑ P(data|θ) * P(θ) | θ
-    def marginal_likelihood(self, **kwargs):
-        return np.sum([self.likelihood(r=r) * self.prior(r=r) for r in self.prior_probs.keys()])
+    def marginal_likelihood(self, *args, **kwargs):
+        return np.sum([self.likelihood(theta) * self.prior(theta) for theta in self.prior_probs.keys()])
 
-    # Posterior P(θ|data)
-    def posterior(self, **kwargs):
+    # Posterior P(θ|data) = (P(data|θ) * P(θ)) / (∑ P(data|θ) * P(θ) | θ)
+    def posterior(self):
         norm_constant = self.marginal_likelihood()
-        return {r: self.joint_probability(r=r) / norm_constant for r in self.prior_probs.keys()}
-
+        [print(theta) for theta in self.prior_probs.keys()]
+        return {theta: self.joint_probability(theta) / norm_constant for theta in self.prior_probs.keys()}
 
     def sample(self, **kwargs):
         size = kwargs.get('num_samples', 1)
@@ -76,6 +76,10 @@ class DiscretePredictor(Predictor):
         probs = list(self.prior_probs.values())
         sampled = np.random.choice(vals, size=size, p=probs)
         return sampled
+
+    def joint_probability(self, theta):
+        print(theta)
+        return self.likelihood(theta) * self.prior(theta)
 
     # E_px_square = np.sum([r**2 for r in sampled_r]) / num_samples # WRONG
     # E_px_square = np.sum([self.likelihood(r=r) * r**2 for r in sampled_r]) # WRONG
@@ -117,27 +121,25 @@ class BinomPredictorDiscreteUniformPrior(DiscretePredictor):
         self.num_heads = num_heads
 
     # Likelihood P(data|r)
-    def likelihood(self, **kwargs):
-        r = kwargs.get('r')
+    def likelihood(self, r, **kwargs):
         return stats.binom.pmf(self.num_heads, self.N, r)
 
     # Prior P(r)
-    def prior(self, **kwargs):
-        return super().prior(**kwargs)
+    def prior(self, r, **kwargs):
+        return super().prior(r, **kwargs)
 
-    # Prior P(data) = ∑_r P(data|r) * P(r)
+    # Marginal Likelihood P(data) = ∑_r P(data|r) * P(r)
     def marginal_likelihood(self, **kwargs):
-        return np.sum([self.likelihood(r=r) * self.prior(r=r) for r in self.prior_probs.keys()])
+        return super().marginal_likelihood()
 
-    # Posterior P(r|data)
+    # Posterior P(r|data) = (P(data|r) * P(r)) / (∑ P(data|r) * P(r) | r)
     def posterior(self, **kwargs):
-        norm_constant = self.marginal_likelihood()
-        return {r: self.joint_probability(r=r) / norm_constant for r in self.prior_probs.keys()}
+        return super().posterior()
 
     # Posterior P(data|r) * P(r)
     def joint_probability(self, **kwargs):
-        r = kwargs.get('r')
-        return self.likelihood(r=r) * self.prior(r=r)
+        theta = kwargs.get('r')
+        return self.likelihood(r=theta) * self.prior(r=theta)
 
     def expected_value(self, **kwargs):
         return np.sum([r * prob for r, prob in self.prior_probs.items()])
@@ -149,8 +151,13 @@ class BinomPredictorDiscreteUniformPrior(DiscretePredictor):
         return BinomPredictorDiscreteUniformPrior(N, num_heads, posterior_probs)
 
 
+discretisation_steps = 10
+predictor = BinomPredictorDiscreteUniformPrior(
+    10, 5, {possible_r: 1 / discretisation_steps
+            for possible_r in np.linspace(0, 1, discretisation_steps + 1)})
+predictor.update(N=10, num_heads=2)
 # %%
-discretisation_steps = 100
+discretisation_steps = 10
 predictor = BinomPredictorDiscreteUniformPrior(
     10, 5, {possible_r: 1 / discretisation_steps
             for possible_r in np.linspace(0, 1, discretisation_steps + 1)})
@@ -161,6 +168,7 @@ N = 50
 one_data_sample = binom(N, true_r)
 
 for i, ax in enumerate(faxes):
+    print("==================")
     fig, ax = plot_discrete_dist(predictor, fig=fig, ax=ax)
     num_heads = one_data_sample.rvs()
     predictor = predictor.update(N=N, num_heads=num_heads)
@@ -172,7 +180,7 @@ predictor.sample(num_samples=10)
 
 # %%
 class GenericPredictorUniformPrior(DiscretePredictor):
-    def __init__(self, prior_probs, generator:Callable) -> None:
+    def __init__(self, prior_probs, generator: Callable) -> None:
         super().__init__(prior_probs)
         self.generator = generator or (lambda x: rnd.uniform(0, 1))
 
@@ -190,7 +198,7 @@ class GenericPredictorUniformPrior(DiscretePredictor):
         return super().prior(**kwargs)
 
     def joint_probability(self, **kwargs):
-        pass
+        return super().joint_probability(**kwargs)
 
     def expected_value(self, **kwargs):
         pass

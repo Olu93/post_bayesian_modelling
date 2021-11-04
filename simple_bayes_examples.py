@@ -43,11 +43,34 @@ class Predictor(abc.ABC):
     def expected_value(self, **kwargs):
         pass
 
+    def sample(self, **kwargs):
+        pass
+
 
 class DiscretePredictor(Predictor):
     def __init__(self, prior_probs) -> None:
         super().__init__()
         self.prior_probs = prior_probs
+
+    def sample(self, **kwargs):
+        size = kwargs.get('num_samples', 1)
+        vals = list(self.prior_probs.keys())
+        probs = list(self.prior_probs.values())
+        sampled = np.random.choice(vals, size=size, p=probs)
+        return sampled
+
+    # E_px_square = np.sum([r**2 for r in sampled_r]) / num_samples # WRONG
+    # E_px_square = np.sum([self.likelihood(r=r) * r**2 for r in sampled_r]) # WRONG
+    # E_px_square = np.sum([self.prior_probs[r] * r**2 for r in sampled_r])  # WRONG
+    def variance(self, **kwargs):
+        expected_value = self.expected_value()
+        # E[P(r|data)^2]
+        E_px_square = np.sum([self.prior_probs[r] * r**2 for r in self.prior_probs.keys()]) 
+
+        # E[P(r|data)]^2
+        E_square_px = expected_value**2
+        var_x = E_px_square - E_square_px
+        return var_x
 
 
 ## %%
@@ -61,7 +84,10 @@ def plot_discrete_dist(predictor: DiscretePredictor,
     ax.plot(rs, ps)
     ax.set_xlabel("r")
     ax.set_ylabel("P(r|data)")
-    ax.set_title((f"E[P(r|data)] = {predictor.expected_value():.5f}"))
+    exp_val = predictor.expected_value()
+    var_val = predictor.variance()
+    ax.set_title((f"E[P(r|data)] = {exp_val:.5f}, var[P(r|data)] = {var_val:.5f}"))
+
     return fig, ax
 
 
@@ -99,6 +125,8 @@ class BinomPredictorDiscreteUniformPrior(DiscretePredictor):
     def expected_value(self, **kwargs):
         return np.sum([r * prob for r, prob in self.prior_probs.items()])
 
+
+
     def update(self, **kwargs):
         N = kwargs.get('N')
         num_heads = kwargs.get('num_heads')
@@ -124,3 +152,10 @@ for i, ax in enumerate(faxes):
     predictor = predictor.update(N=N, num_heads=num_heads)
 fig.tight_layout()
 plt.show()
+# %%
+predictor.sample(num_samples=10)
+# %%
+predictor.variance(num_samples=10)
+# %%
+
+# %%

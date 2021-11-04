@@ -1,6 +1,6 @@
 # %%
 from operator import pos
-from typing import Tuple
+from typing import Callable, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.lib.function_base import meshgrid
@@ -43,6 +43,9 @@ class Predictor(abc.ABC):
     def expected_value(self, **kwargs):
         pass
 
+    def variance(self, **kwargs):
+        pass
+
     def sample(self, **kwargs):
         pass
 
@@ -51,6 +54,21 @@ class DiscretePredictor(Predictor):
     def __init__(self, prior_probs) -> None:
         super().__init__()
         self.prior_probs = prior_probs
+    
+    # Prior P(θ)
+    def prior(self, **kwargs):
+        r = kwargs.get('r')
+        return self.prior_probs.get(r, 0)
+
+    # Prior P(data) = ∑ P(data|θ) * P(θ) | θ
+    def marginal_likelihood(self, **kwargs):
+        return np.sum([self.likelihood(r=r) * self.prior(r=r) for r in self.prior_probs.keys()])
+
+    # Posterior P(θ|data)
+    def posterior(self, **kwargs):
+        norm_constant = self.marginal_likelihood()
+        return {r: self.joint_probability(r=r) / norm_constant for r in self.prior_probs.keys()}
+
 
     def sample(self, **kwargs):
         size = kwargs.get('num_samples', 1)
@@ -105,8 +123,7 @@ class BinomPredictorDiscreteUniformPrior(DiscretePredictor):
 
     # Prior P(r)
     def prior(self, **kwargs):
-        r = kwargs.get('r')
-        return self.prior_probs.get(r, 0)
+        return super().prior(**kwargs)
 
     # Prior P(data) = ∑_r P(data|r) * P(r)
     def marginal_likelihood(self, **kwargs):
@@ -133,7 +150,6 @@ class BinomPredictorDiscreteUniformPrior(DiscretePredictor):
 
 
 # %%
-print("==========================")
 discretisation_steps = 100
 predictor = BinomPredictorDiscreteUniformPrior(
     10, 5, {possible_r: 1 / discretisation_steps
@@ -152,8 +168,43 @@ fig.tight_layout()
 plt.show()
 # %%
 predictor.sample(num_samples=10)
+
+
 # %%
-predictor.variance(num_samples=10)
+class GenericPredictorUniformPrior(DiscretePredictor):
+    def __init__(self, prior_probs, generator:Callable) -> None:
+        super().__init__(prior_probs)
+        self.generator = generator or (lambda x: rnd.uniform(0, 1))
+
+    def marginal_likelihood(self, **kwargs):
+        pass
+
+    def posterior(self, **kwargs):
+        pass
+
+    def likelihood(self, **kwargs):
+        llh = self.generator(**kwargs)
+        return llh
+
+    def prior(self, **kwargs):
+        return super().prior(**kwargs)
+
+    def joint_probability(self, **kwargs):
+        pass
+
+    def expected_value(self, **kwargs):
+        pass
+
+    def variance(self, **kwargs):
+        pass
+
+    def sample(self, **kwargs):
+        pass
+
+
 # %%
+class BinomPredictorBetaPrior(Predictor):
+    pass
+
 
 # %%

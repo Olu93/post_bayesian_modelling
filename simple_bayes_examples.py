@@ -65,7 +65,7 @@ class DiscretePredictor(Predictor):
     def variance(self, **kwargs):
         expected_value = self.expected_value()
         # E[P(r|data)^2]
-        E_px_square = np.sum([self.prior_probs[r] * r**2 for r in self.prior_probs.keys()]) 
+        E_px_square = np.sum([self.prior_probs[r] * r**2 for r in self.prior_probs.keys()])
 
         # E[P(r|data)]^2
         E_square_px = expected_value**2
@@ -124,8 +124,6 @@ class BinomPredictorDiscreteUniformPrior(DiscretePredictor):
 
     def expected_value(self, **kwargs):
         return np.sum([r * prob for r, prob in self.prior_probs.items()])
-
-
 
     def update(self, **kwargs):
         N = kwargs.get('N')

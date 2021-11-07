@@ -164,22 +164,30 @@ class BetaEstimator(ContinuousPredictor):
         return stats.binom(self.N, r).pmf(self.y_N)
 
     def prior(self, r, alpha, beta):
+        # p(α,β|k) = with k being X, w_a, w_b  
+        p_ab = p_a * p_b # Both probability distributions need to be estimated
+        
+        # p(α|X, w_a) * p(β|X, w_b) as α _|_ β 
+        # E[p(α|X, w_a)], E[p(β|X, w_b)]
+        alpha, beta = self.a_b_estimate(self.X, self.w_a, self.w_b)
+        
+        # E[p(r|α,β)] 
+        r = self.r_estimate(alpha/(alpha+beta),self.w_r)
+
         # p(r|α,β)
         p_r_given_ab = stats.beta(alpha, beta).pdf(r)
-        # p(α,β|k)
-        p_ab = self.a_b_likelihood(self.k)
         return p_r_given_ab * p_ab
 
     def marginal_likelihood(self, y_K):
         # ∑ ∑ ∑ p(y_N|r) * p(r|α,β) * p(α,β|k) | r,α,β
         pass
 
-    def a_b_likelihood(self, X, w_a, w_b):
+    def a_b_estimate(self, X, w_a, w_b):
         a = X @ w_a
         b = X @ w_b
         return a, b
 
-    def r_likelihood(self, rs, w_r):
+    def r_estimate(self, rs, w_r):
         a = rs @ w_r
         return a
 
@@ -187,30 +195,11 @@ class BetaEstimator(ContinuousPredictor):
         w = np.linalg.inv(X.T @ X + lmb * np.eye(X.shape[1])) @ X.T @ y
         return w
 
-    # def pred_likelihood(self, y, X, w_a, w_b):
-    #     train_X = add_bias_vector(create_polinomial_bases(X, 3))
-    #     a, b = self.a_b_likelihood(train_X, w_a, w_b)
-    #     pred_r = a / (a + b)
-    #     y_pred = stats.binom(self.N, pred_r).rvs(size=len(y))  # y_pred ~ Binom(N, p=f(X, w))
-    #     logllh = np.log((y - y_pred))  # y - y_pred
-    #     sum_of_square_diff = np.sum(logllh**2)  # L = ∑ y_n - y_pred_n | n
-    #     pass
 
-    # def pred_likelihood(self, y, X, w_r, w_a, w_b):
-    #     train_X = add_bias_vector(create_polinomial_bases(X, 3)) # -- Shape: (num_X, order+1)
-    #     A, B = self.a_b_likelihood(train_X, w_a, w_b) # A = f(X, w_a), B = f(X, w_b) -- Shape: (num_X, 1) & (num_X, 1)
-
-    #     expected_R = A / (A + B) # E[R|Alpha,Beta] -- Shape (num_X, 1)
-    #     train_pred_R = add_bias_vector(create_polinomial_bases(expected_R, 3)) # -- Shape: (num_X, order+1)
-
-    #     y_pred = w_r @ train_pred_R  # y_pred = g(f(X, w_a), f(X, w_b)) -- Shape: (num_X, 1)
-    #     square_diff = (y - y_pred)**2  # (y - y_pred)**2
-    #     sum_of = np.sum(square_diff)  # L = ∑ y_n - y_pred_n | n
-    #     pass
 
     def pred_likelihood(self, y, X, w_r, w_a, w_b):
         train_X = add_bias_vector(create_polinomial_bases(X, 3))  # -- Shape: (num_X, order+1)
-        A, B = self.a_b_likelihood(train_X, w_a, w_b)  # A = f(X, w_a), B = f(X, w_b) -- Shape: (num_X, 1) & (num_X, 1)
+        A, B = self.a_b_estimate(train_X, w_a, w_b)  # A = f(X, w_a), B = f(X, w_b) -- Shape: (num_X, 1) & (num_X, 1)
 
         expected_R = A / (A + B)  # E[R|Alpha,Beta] -- Shape (num_X, 1)
         train_pred_R = add_bias_vector(create_polinomial_bases(expected_R, 3))  # -- Shape: (num_X, order+1)
@@ -218,7 +207,8 @@ class BetaEstimator(ContinuousPredictor):
         y_pred = w_r @ train_pred_R  # y_pred = g(f(X, w_r)) -- Shape: (num_X, 1)
         squared_diff = (y - y_pred)**2  # (y - y_pred)**2
         sum_of_squared_diff = np.sum(squared_diff)  # L = ∑ loss_n | n
-        self.optimize(squared_diff, w_r, w_a, w_b)
+        new_w_r, new_w_a, new_w_b = self.optimize(squared_diff, train_pred_R, w_r, w_a, w_b)
+        return new_w_r, new_w_a, new_w_b
 
     # def optimize(self, losses, pred_r, X, w_r, w_a, w_b):
 
@@ -235,7 +225,7 @@ class BetaEstimator(ContinuousPredictor):
     #     new_w_b = w_b - self.lr * np.mean(outer_derivative * w_r * inner_derivative_w_b)
 
     #     return new_w_r, new_w_a, new_w_b
-    
+
     def optimize(self, losses, pred_r, X, w_r, w_a, w_b):
 
         outer_derivative = -2 * losses

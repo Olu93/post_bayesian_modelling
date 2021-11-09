@@ -27,16 +27,22 @@ train_X = add_bias_vector(create_polinomial_bases(X, order=p_ord))
 val_X = add_bias_vector(create_polinomial_bases(data[:, :-1], order=p_ord))
 train_X.shape
 # %%
+# t_n = Xw + ε   |ε ~ N(0,1) 
+# Model assumes p(t|X,w,σ²) = N(Xw; σ²I)
 
 
 def compute_weights(X, y):
-    w = np.linalg.inv(X.T @ X) @ X.T @ y
-    return w
+    # Under assumptions unbiased: w = E[w_hat|p(t|X,w,σ²)] = Σ[w_hat*p(t|X,w,σ²)] over t
+    # w_hat
+    w_hat = np.linalg.inv(X.T @ X) @ X.T @ y
+    return w_hat
 
 
-def compute_sigma_squared(X, y, w):
-    sigma = y.T @ y - y.T @ X @ w
-    return sigma
+def compute_sigma_squared(X, y, w): 
+    # Same as (sum((y_n - x_n*w)²))/N = ((y-Xw).T @ (y-Xw))/N
+    total_sigma = y.T @ y - y.T @ X @ w
+    expected_sigma = total_sigma / len(y)
+    return expected_sigma
 
 
 w_pred = compute_weights(train_X, y).reshape(-1, 1)
@@ -150,6 +156,7 @@ I_pred
 # %%
 # covariance of w_pred
 # Tells you how much you need to change a w if you changed a correlated weight
+# cov[w_hat|p(t|X,w,σ²)] = E[w_hat²|p(t|X,w,σ²)] - E[w_hat|p(t|X,w,σ²)]²  
 cov_w_pred = sigma_squared_pred * np.linalg.inv(train_X.T @ train_X)
 w_sampled = np.random.multivariate_normal(w_pred.squeeze(), cov_w_pred)
 w_sampled

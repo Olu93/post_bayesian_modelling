@@ -45,58 +45,13 @@ val_y = val_data[:, -1][:, None]
 #   - Is hard to compute due to the normalizing constant
 #   - We can optimize the numerator instead g(w; X, t, σ²) = p(t|X; w) * p(w|σ²)
 #   - Best is to optimize the log g(w; X, t, σ²) = p(t|X; w) + p(w|σ²)
-#       -
+#       - log g(w; X; t; σ²) ≈ log g(w_hat; X; t; σ²) − v/2 (w-w_hat)²
+#       - v is the negative of the second detivative of log g(w; X, t, σ²)
 
 
-def newton_method(x, first_derivation, second_derivation):
-    x_opt = x - (first_derivation(x) / second_derivation(x))
-    return x_opt
 
 
-def newton_method_vectorised(
-    w,
-    X,
-    t,
-    sigma_sq,
-    first_derivation,
-    second_derivation,
-    use_mean=False,
-):
-    # print("init w")
-    # print(w)
-    gradient = first_derivation(w, X, t, sigma_sq)
-    # print("opt")
-    # print(opt)
-    hessian = np.linalg.inv(second_derivation(gradient, X, t, sigma_sq))
-    # print("hessian")
-    # print(hessian)
 
-    # print("update amount")
-    # print(hessian @ opt)
-    weight_change = (hessian @ gradient) / (len(X) if use_mean else 1)
-    w_new = w - weight_change
-    # w_new = w - (hessian @ gradient) #/ (len(X) if use_mean else 1)
-    # print("w_opt")
-    # print(w_opt)
-    return w_new, weight_change, gradient, hessian
-
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
-
-
-def first_derivation(w, X, t, sigma_sq):
-    # print(np.sum(X * (t - sigmoid(X @ w)), axis=0))
-    result = (-1 / sigma_sq) * w + np.sum(X * (t - sigmoid(X @ w)), axis=0)[:, None]
-    return result
-
-
-def second_derivation(w, X, t, sigma_sq):
-    block1 = (-1 / sigma_sq) * np.eye(len(w))
-    # block2 = np.sum(X * X, axis=1)
-    block2 = X * X
-    block3 = sigmoid(X @ w) * (1 - sigmoid(X @ w))
-    return block1 - np.sum(block2 * block3, axis=0)
 
 
 # w = np.random.normal(1, 0.5, size=(train_X.shape[1], 1))

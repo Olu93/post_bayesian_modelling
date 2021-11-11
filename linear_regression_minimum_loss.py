@@ -5,7 +5,7 @@ import pandas as pd
 from IPython.display import display
 import scipy
 import random as r
-from data import observed_data, true_function
+from data import observed_data, true_function_polynomial
 from helper import add_bias_vector, create_polinomial_bases
 
 # %%

@@ -7,7 +7,7 @@ from IPython.display import display
 from scipy import stats
 from matplotlib import cm
 import random as r
-from data import observed_data, observed_data_linear, true_function
+from data import observed_data, observed_data_linear, true_function_polynomial
 from helper import add_bias_vector, create_polinomial_bases
 np.set_printoptions(edgeitems=30, linewidth=100000, formatter=dict(float=lambda x: "%.3g" % x))
 # %%

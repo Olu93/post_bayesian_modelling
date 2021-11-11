@@ -8,8 +8,30 @@ import random as r
 np.random.seed(42)
 
 
-def true_function(x, y, p1, p2):
+def true_function_polynomial(x, y, p1, p2):
     return (3 * (x**p1)) - ((1 / 2) * y**p2) - 1
+
+
+def d1_function_polynomial(x, y, p1, p2):
+    dx = (p1) * 3 * x**(p1 - 1)
+    dy = (p2) * (1 / 2) * y**(p2 - 1)
+
+    return dx, dy
+
+def opt_d1_function_polynomial(x, y, p1, p2):
+    dx_opt = np.power(x, 1/(p1 - 1))-x
+    dy_opt = np.power(y, 1/(p2 - 1))-y
+
+    return dx_opt, dy_opt
+
+
+def d2_function_polynomial(x, y, p1, p2):
+    dxx = (p1) * (p1 - 1) * 3 * x**(p1 - 2)
+    dxy = np.zeros_like(dxx)
+    dyy = (p2) * (p2 - 1) * (1 / 2) * y**(p2 - 2)
+    dyx = np.zeros_like(dyy)
+
+    return np.array([[dxx, dxy], [dyx,dyy]])
 
 
 def true_function_linear(x, p1=1):
@@ -24,7 +46,7 @@ def observed_data(d: int = 10, p1=2, p2=3):
     data = np.random.randn(d, 2) * 3
     x, y = data[:, 0], data[:, 1]
     variance = 2.5
-    return x, y, true_function(x, y, p1, p2) + np.random.randn(d) * variance
+    return x, y, true_function_polynomial(x, y, p1, p2) + np.random.randn(d) * variance
 
 
 def observed_data_wobbly(d: int = 10):

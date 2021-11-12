@@ -16,24 +16,24 @@ from tqdm import tqdm
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 IS_EXACT_FORMULA = True
 # %%
-n = 1000
-w1, w2 = 0.1, -0.7
-xstd = 50
+n = 5000
+w1, w2 = -5, 5
+xstd = 1
 val_n = 100
 p_ord = 1
-iterations = 100 
-smooth = 10 
-data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd)).T)
-val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd)).T)
+iterations = 100
+smooth = 1
+data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, False)).T)
+val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, False)).T)
 display(data.max(axis=0))
 display(data.min(axis=0))
 display(data.mean(axis=0))
 
 train_X = data[:, :-1]
-train_X = add_bias_vector(create_polinomial_bases(data[:, :-1], p_ord))
+# train_X = add_bias_vector(create_polinomial_bases(data[:, :-1], p_ord))
 train_y = data[:, -1][:, None]
 val_X = val_data[:, :-1]
-val_X = add_bias_vector(create_polinomial_bases(val_data[:, :-1], p_ord))
+# val_X = add_bias_vector(create_polinomial_bases(val_data[:, :-1], p_ord))
 val_y = val_data[:, -1][:, None]
 # %%
 # Prior p(w|σ²) = N (0; σ²I) | w ~ N (0; σ²I)
@@ -69,7 +69,7 @@ def newton_method_vectorised(
     # A certain number of iterations have been performed. Stopping after, say 10 iterations, prevents the situation where the method has failed to converge and is aimlessly looping. This is not a problem when you use the method by hand as you will soon see if something has gone wrong but can cause problems when the method is implemented on a computer.
     # Stop if $F^{\prime}(x_{n}) = 0$. This is extremely unlikely but if it does happen then computers do not like dividing by zero. It means the method has located a turning point of the function.
     gradient = first_derivation(w, X, t, sigma_sq)
-    hessian = second_derivation(w, X, t, sigma_sq)
+    hessian = second_derivation(gradient, X, t, sigma_sq)
     weight_change = (np.linalg.inv(hessian) @ gradient) # / (len(X) if use_mean else 1)
     w_new = w - weight_change
     return w_new, weight_change, gradient, hessian
@@ -90,15 +90,17 @@ def first_derivation(w, X, t, sigma_sq):
 
 
 def second_derivation(w, X, t, sigma_sq):
-    block1 = (-1 / sigma_sq) * np.eye(len(w))
-    block2 = np.sum(X * X, axis=1)
-    # block2 = X * X
-    block3 = sigmoid(X @ w) * (1 - sigmoid(X @ w))
+    # block1 = (-1 / sigma_sq) * np.eye(len(w))
+    # block2 = np.sum(X * X, axis=1)
+    block2 = np.matmul(X[:,:,None], X[:,None,:])
+    block3 =(sigmoid(X @ w) * (1 - sigmoid(X @ w)))[:,:,None]
     # return block1 - np.sum(block2 * block3, axis=0)
-    return block1 - np.sum(block2 * block3)
+    # Andrew Ng Logistic Regression with Newton-Rhapson https://www.youtube.com/watch?v=fF-6QnVB-7E
+    H = np.mean(block2 * block3, axis=0)
+    return (-1 / sigma_sq) * np.eye(len(w)) - H
 
 
-w = np.random.normal(1, 0.5, size=(train_X.shape[1], 1))*2
+w = np.random.normal(2, 5, size=(train_X.shape[1], 1))*2
 # w = np.zeros(shape=(train_X.shape[1], 1))
 # w = np.array([[1], [-3], [3]])
 # w = np.random.multivariate_normal([w1,w2], np.eye(train_X.shape[1]))[:, None]
@@ -108,8 +110,14 @@ all_ws = [w]
 all_deltas = []
 all_train_losses = []
 all_val_losses = []
-assumed_sigma_sq = 1 / (n * 100 / 5)
-with tqdm(range(3000)) as pbar:
+assumed_sigma_sq = 1 / 10
+train_preds = train_X @ w
+val_preds = val_X @ w
+m_train_acc = np.mean(train_y == (train_preds>0.5)*1.0)
+m_val_acc = np.mean(val_y == ((val_preds>0.5)*1.0))
+all_train_losses.append(m_train_acc)
+all_val_losses.append(m_val_acc)
+with tqdm(range(iterations*10)) as pbar:
     for i in pbar:
         # print("====================")
         w, w_delta, gradient, hessian = newton_method_vectorised(
@@ -129,16 +137,18 @@ with tqdm(range(3000)) as pbar:
         val_losses = val_y - val_preds
         m_train_loss = np.mean(np.abs(train_losses))
         m_val_loss = np.mean(np.abs(val_losses))
-        all_train_losses.append(m_train_loss)
-        all_val_losses.append(m_val_loss)
-        pbar.set_description_str(f"Train: {m_train_loss:.4f} | Val: {m_train_loss:.4f}")
+        m_train_acc = np.mean(train_y == (train_preds>0.5)*1.0)
+        m_val_acc = np.mean(val_y == ((val_preds>0.5)*1.0))
+        all_train_losses.append(m_train_acc)
+        all_val_losses.append(m_val_acc)
+        pbar.set_description_str(f"Train: {m_train_acc:.4f} | Val: {m_val_acc:.4f}")
 print(f"Final weights: ", w.T)
 
 ## %%
 fig, ax = plt.subplots(1, 1, figsize=(15, 15), subplot_kw={"projection": "3d"})
 w_cov = np.array([[1, 0], [0, 1]])
 w_mu = np.array([w1, w2])
-contour_width = 3
+contour_width = 10
 
 X = np.linspace(w1 - contour_width, w1 + contour_width, 100)
 Y = np.linspace(w2 - contour_width, w2 + contour_width, 100)
@@ -150,9 +160,9 @@ CS = ax.contour(X, Y, Z)
 ax.clabel(CS, inline=True, fontsize=10)
 
 ws = np.hstack(all_ws).T[::1]
-w0s, w1s, w2s = ws[:, 0], ws[:, 1], ws[:, 2]
-zws = distribution.pdf(ws[:, [1, 2]])
-ax.plot(w1s, w2s, distribution.pdf(ws[:, [1,2]]))
+w1s, w2s = ws[:, -2], ws[:, -1]
+zws = distribution.pdf(ws[:, [-2, -1]])
+ax.plot(w1s, w2s, distribution.pdf(ws[:, [-2, -1]]))
 ax.scatter(w1s[0], w2s[0], zws[0], s=100, c='green', label="start")
 ax.scatter(w1s[-1], w2s[-1], zws[-1], s=100, c='red', label="end")
 # ax.plot(w0s, w1s, w2s, linestyle='dashed')
@@ -168,8 +178,8 @@ fig, ax = plt.subplots(1, 1, figsize=(10, 10))
 ax.plot(all_train_losses[::smooth], label=f"train-loss")
 ax.plot(all_val_losses[::smooth], label=f"val-loss")
 ax.set_xlabel("Iteration")
-ax.set_ylabel("Loss")
-ax.set_title("Losses per iteration")
+ax.set_ylabel("Acc")
+ax.set_title("Accuracies per iteration")
 ax.legend()
 plt.show()
 

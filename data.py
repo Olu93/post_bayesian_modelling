@@ -63,18 +63,20 @@ def observed_data_linear(d: int = 10, p1=1):
     return x, true_function_linear(x, p1) + np.random.randn(d)
 
 
-def observed_data_binary(d: int = 10, w1=2, w2=2, std=3):
-    data = np.random.uniform(-std, std, size=(d,2))
+def observed_data_binary(d: int = 10, w1=2, w2=2, std=3, with_err=False):
+    data = np.random.normal(0, std, size=(d, 2))
     # print(data)
     x, y = data[:, 0], data[:, 1]
     z = true_function_sigmoid(x, y, w1, w2)
     # z_is_1 = true_function_sigmoid(x, y, w1, w2)
     # z_is_0 = 1 - true_function_sigmoid(x, y, w1, w2)
     # variance = np.random.uniform(shape=(n, 1))
-    err = np.random.randn(d)
+    if with_err:
+        err = np.random.randn(d) * 0.25
+        z = z + err
     # print(z.shape)
     # print(err.shape)
-    return x, y, z < 0.5
+    return x, y, z > 0.5
 
 
 # %%
@@ -112,7 +114,7 @@ plt.show()
 
 # %%
 fig = plt.figure()
-ax = fig.add_subplot(1,2,1,projection='3d')
+ax = fig.add_subplot(1, 2, 1, projection='3d')
 
 n = 50
 w1, w2 = 0.1, -0.7
@@ -122,9 +124,9 @@ ax.scatter(xs, ys, zs)
 ax.set_xlabel('X Label')
 ax.set_ylabel('Y Label')
 ax.set_zlabel('Z Label')
-ax.view_init(30,15)
+ax.view_init(30, 15)
 
-ax = fig.add_subplot(1,2,2,projection='3d')
+ax = fig.add_subplot(1, 2, 2, projection='3d')
 
 zs = true_function_sigmoid(xs, ys, w1, w2)
 ax.scatter(xs, ys, zs)
@@ -132,5 +134,5 @@ ax.scatter(xs, ys, zs)
 ax.set_xlabel('X Label')
 ax.set_ylabel('Y Label')
 ax.set_zlabel('Z Label')
-ax.view_init(30,15)
+ax.view_init(30, 15)
 plt.show()

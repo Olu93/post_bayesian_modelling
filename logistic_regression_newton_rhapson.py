@@ -16,12 +16,12 @@ from tqdm import tqdm
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 IS_EXACT_FORMULA = True
 # %%
-n = 5000
-w1, w2 = -5, 5
+n = 10000
+w1, w2 = -0.4, 0.2
 xstd = 1
 val_n = 100
 p_ord = 1
-iterations = 100
+iterations = 1000
 smooth = 1
 data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, False)).T)
 val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, False)).T)
@@ -71,7 +71,7 @@ def newton_method_vectorised(
     gradient = first_derivation(w, X, t, sigma_sq)
     hessian = second_derivation(gradient, X, t, sigma_sq)
     weight_change = (np.linalg.inv(hessian) @ gradient) # / (len(X) if use_mean else 1)
-    w_new = w - weight_change
+    w_new = w - weight_change/10
     return w_new, weight_change, gradient, hessian
 
 
@@ -110,14 +110,14 @@ all_ws = [w]
 all_deltas = []
 all_train_losses = []
 all_val_losses = []
-assumed_sigma_sq = 1 / 10
+assumed_sigma_sq = 1 / 1000
 train_preds = train_X @ w
 val_preds = val_X @ w
 m_train_acc = np.mean(train_y == (train_preds>0.5)*1.0)
 m_val_acc = np.mean(val_y == ((val_preds>0.5)*1.0))
 all_train_losses.append(m_train_acc)
 all_val_losses.append(m_val_acc)
-with tqdm(range(iterations*10)) as pbar:
+with tqdm(range(iterations)) as pbar:
     for i in pbar:
         # print("====================")
         w, w_delta, gradient, hessian = newton_method_vectorised(
@@ -148,7 +148,7 @@ print(f"Final weights: ", w.T)
 fig, ax = plt.subplots(1, 1, figsize=(15, 15), subplot_kw={"projection": "3d"})
 w_cov = np.array([[1, 0], [0, 1]])
 w_mu = np.array([w1, w2])
-contour_width = 10
+contour_width = 1
 
 X = np.linspace(w1 - contour_width, w1 + contour_width, 100)
 Y = np.linspace(w2 - contour_width, w2 + contour_width, 100)

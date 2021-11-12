@@ -18,9 +18,10 @@ def d1_function_polynomial(x, y, p1, p2):
 
     return dx, dy
 
+
 def opt_d1_function_polynomial(x, y, p1, p2):
-    dx_opt = np.power(x, 1/(p1 - 1))-x
-    dy_opt = np.power(y, 1/(p2 - 1))-y
+    dx_opt = np.power(x, 1 / (p1 - 1)) - x
+    dy_opt = np.power(y, 1 / (p2 - 1)) - y
 
     return dx_opt, dy_opt
 
@@ -31,7 +32,7 @@ def d2_function_polynomial(x, y, p1, p2):
     dyy = (p2) * (p2 - 1) * (1 / 2) * y**(p2 - 2)
     dyx = np.zeros_like(dyy)
 
-    return np.array([[dxx, dxy], [dyx,dyy]])
+    return np.array([[dxx, dxy], [dyx, dyy]])
 
 
 def true_function_linear(x, p1=1):
@@ -63,9 +64,17 @@ def observed_data_linear(d: int = 10, p1=1):
 
 
 def observed_data_binary(d: int = 10, w1=2, w2=2, std=3):
-    data = np.random.randn(d, 2) * std
+    data = np.random.uniform(-std, std, size=(d,2))
+    # print(data)
     x, y = data[:, 0], data[:, 1]
-    return x, y, true_function_sigmoid(x, y, w1, w2) > 0.5
+    z = true_function_sigmoid(x, y, w1, w2)
+    # z_is_1 = true_function_sigmoid(x, y, w1, w2)
+    # z_is_0 = 1 - true_function_sigmoid(x, y, w1, w2)
+    # variance = np.random.uniform(shape=(n, 1))
+    err = np.random.randn(d)
+    # print(z.shape)
+    # print(err.shape)
+    return x, y, z < 0.5
 
 
 # %%
@@ -103,17 +112,25 @@ plt.show()
 
 # %%
 fig = plt.figure()
-ax = fig.add_subplot(projection='3d')
+ax = fig.add_subplot(1,2,1,projection='3d')
 
 n = 50
-
-# For each set of style and range settings, plot n random points in the box
-# defined by x in [23, 32], y in [0, 100], z in [zlow, zhigh].
-xs, ys, zs = observed_data_binary(n)
+w1, w2 = 0.1, -0.7
+xs, ys, zs = observed_data_binary(n, w1, w2, std=50)
 ax.scatter(xs, ys, zs)
 
 ax.set_xlabel('X Label')
 ax.set_ylabel('Y Label')
 ax.set_zlabel('Z Label')
+ax.view_init(30,15)
 
+ax = fig.add_subplot(1,2,2,projection='3d')
+
+zs = true_function_sigmoid(xs, ys, w1, w2)
+ax.scatter(xs, ys, zs)
+
+ax.set_xlabel('X Label')
+ax.set_ylabel('Y Label')
+ax.set_zlabel('Z Label')
+ax.view_init(30,15)
 plt.show()

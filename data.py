@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import scipy
 import random as r
+# https://github.com/jkclem/MCMC-Log-Reg/blob/master/MCMC%20Logistic%20Regression.ipynb
 # %%
 np.random.seed(42)
 

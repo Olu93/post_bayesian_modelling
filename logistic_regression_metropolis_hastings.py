@@ -31,21 +31,21 @@ def observed_data_binary(d: int = 10, w1=2, w2=2, std=3, with_err=False):
     x, y = data[:, 0], data[:, 1]
     probability = true_function_sigmoid(x, y, w1, w2)
     if with_err:
-        err = np.random.randn(d) * 0.25
+        err = np.random.randn(d) * 0.10
         probability = probability + err
     z = probability < 0.5
     return x, y, z
 
 
 n = 1000
-w1, w2 = -0.6, 0.3
+w1, w2 = -0.6, 0.5
 xstd = 1
 val_n = 100
 p_ord = 1
 iterations = 50
 smooth = 1
-data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, False)).T)
-val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, False)).T)
+data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, True)).T)
+val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, True)).T)
 display(data.max(axis=0))
 display(data.min(axis=0))
 display(data.mean(axis=0))
@@ -56,6 +56,7 @@ train_y = data[:, -1][:, None]
 val_X = val_data[:, :-1]
 # val_X = add_bias_vector(create_polinomial_bases(val_data[:, :-1], p_ord))
 val_y = val_data[:, -1][:, None]
+
 ## %%
 # Prior p(w|σ²) = N (0; σ²I) | w ~ N (0; σ²I)
 # Likelihood p(t|X; w) = Π p(T_n = t_n|x_n; w)**t_n * p(T_n = t_n|x_n; w)**(1-t_n)
@@ -64,21 +65,24 @@ val_y = val_data[:, -1][:, None]
 #   - Predictive distribution is asymptotically equal to the average draws with a sampled posterior value w_s
 
 
+# %%
 def metropolis_hastings_algorithm(X, t, w_mu_prior, w_cov_prior, sigma_sq=None, num_iter=1000):
     all_ws = np.zeros((num_iter, len(w_mu_prior)))
     w = np.random.multivariate_normal(w_mu_prior.flatten(), w_cov)
-    pbar = tqdm(range(num_iter-1))
+    pbar = tqdm(range(num_iter - 1))
     all_ws[0] = w
     for i in pbar:
+        last_accepted = all_ws[i]
+        all_ws[i + 1] = np.copy(last_accepted)
         for j in range(len(w)):
-            w_candidate = propose_new_sample(j, all_ws[i], w_cov_prior)
+            w_candidate = propose_new_sample(j, all_ws[i + 1] , w_cov_prior)
             is_accepted = accept_or_reject_sample(w_candidate, w, X, t, w_mu_prior, w_cov_prior)
             w = w_candidate if is_accepted else w
-            all_ws[i+1] = w
+            all_ws[i + 1] = np.copy(w_candidate)
             train_preds = train_X @ w
             train_losses = train_y - train_preds
             m_train_loss = np.mean(np.abs(train_losses))
-            m_train_acc = np.mean(train_y == (train_preds>0.5)*1.0)
+            m_train_acc = np.mean(train_y == (train_preds > 0.5) * 1.0)
             pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
     return w, all_ws
@@ -88,18 +92,21 @@ def metropolis_hastings_algorithm(X, t, w_mu_prior, w_cov_prior, sigma_sq=None, 
 def propose_new_sample(w_index, w_last_accepted, w_cov):
     w_delta = np.random.multivariate_normal(np.zeros_like(w_last_accepted).flatten(), w_cov)
     w_candidate = np.array(w_last_accepted)
-    w_candidate[w_index] = w_delta[w_index]
+    w_candidate[w_index] = w_candidate[w_index] + w_delta[w_index]
     return w_candidate
 
 
 def accept_or_reject_sample(w_candidate, w_last_accepted, X, t, mean, w_cov):
-    prior_distribution = stats.multivariate_normal(mean.flatten(), w_cov)
+    log_prior_candidate = stats.multivariate_normal.logpdf(w_candidate, w_last_accepted, w_cov)
+    log_prior_last = stats.multivariate_normal.logpdf(w_last_accepted, w_last_accepted, w_cov)
     log_likelihood_candidate = log_likelihood_function(w_candidate, X, t)
     log_likelihood_last = log_likelihood_function(w_last_accepted, X, t)
-    ratio_prior = prior_distribution.pdf(w_candidate) / prior_distribution.pdf(w_last_accepted)
-    ratio_likelihood = np.exp(log_likelihood_candidate) / np.exp(log_likelihood_last)
-    r = ratio_prior * ratio_likelihood
-    is_accepted = True if r > 1 else np.random.uniform() <= r
+    r_candidate = log_prior_candidate + log_likelihood_candidate
+    r_last = log_prior_last + log_likelihood_last
+    r = r_candidate - r_last
+    inv_sampling_val = np.random.uniform()
+    is_accepted = True if r > 1 else inv_sampling_val <= np.exp(r)
+    print(f"{is_accepted} : {inv_sampling_val:.4f} < {np.exp(r):.4f}, {w_candidate.T}")
     return is_accepted
 
 
@@ -122,10 +129,10 @@ def sigmoid(x):
 all_deltas = []
 all_train_accs = []
 all_val_accs = []
-assumed_sigma_sq = 1 / (n * 100)
+assumed_sigma_sq = 1 / (n)
 w_mu_prior = np.zeros((train_X.shape[1], 1))
-w_cov_prior = np.eye(train_X.shape[1])
-num_iter = 2000
+w_cov_prior = np.eye(train_X.shape[1]) * assumed_sigma_sq
+num_iter = 500
 # print("====================")
 
 w_hat, all_w_hats = metropolis_hastings_algorithm(train_X,
@@ -134,20 +141,20 @@ w_hat, all_w_hats = metropolis_hastings_algorithm(train_X,
                                                   w_cov_prior,
                                                   assumed_sigma_sq,
                                                   num_iter=num_iter)
-all_w_hats[num_iter//10:].mean(axis=0)
+all_w_hats[num_iter // 10:].mean(axis=0)
 
 
-# %%
+## %%
 def predict(ws, val_X, num_samples=1000):
     logits = val_X @ ws.T
     probabilities = sigmoid(logits).mean(axis=1)
     return probabilities[:, None]
 
 
-# %%
+## %%
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 15))
-burnin_period = num_iter//10
+burnin_period = num_iter // 10
 
 w_cov = np.array([[1, 0], [0, 1]])
 w_mu = np.array([w1, w2])

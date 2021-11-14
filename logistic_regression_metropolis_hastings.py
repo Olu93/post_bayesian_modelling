@@ -66,7 +66,7 @@ val_y = val_data[:, -1][:, None]
 
 
 # %%
-def metropolis_hastings_algorithm(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
+def metropolis_hastings_algorithm_diagonal(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
     all_ws = np.zeros((num_iter, len(w_init)))
     w_init_flat = w_init.flatten()
     w = np.random.multivariate_normal(w_init_flat, w_cov_prior)
@@ -88,6 +88,43 @@ def metropolis_hastings_algorithm(X, t, w_init, w_cov_prior, sigma_sq=None, num_
         pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
     return w, all_ws
+
+
+def metropolis_hastings_algorithm_perpendicular(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
+    all_ws = np.zeros((num_iter, len(w_init)))
+    w_init_flat = w_init.flatten()
+    w = np.random.multivariate_normal(w_init_flat, w_cov_prior)
+    pbar = tqdm(range(num_iter - 1))
+    all_ws[0] = w
+    w_last = all_ws[0]
+    w_current = all_ws[0]
+    for i in pbar:
+        for j in range(len(w_init_flat)):
+            dim_manipulation_cov_prior = np.zeros_like(w_cov_prior)
+            dim_manipulation_cov_prior[j, j] = w_cov_prior[j, j]
+            # dim_manipulation_cov_prior = select_matrix_cross(j, w_cov_prior)
+            w_candidate = propose_new_sample(w_last, dim_manipulation_cov_prior)
+            is_accepted = accept_or_reject_sample(w_candidate, w_current, X, t, w_init_flat, w_cov_prior)
+            w = w_candidate if is_accepted else w
+            all_ws[i + 1] = np.copy(w)
+            w_last = all_ws[i]
+            w_current = all_ws[i + 1]
+            train_preds = train_X @ w
+            train_losses = train_y - train_preds
+            m_train_loss = np.mean(np.abs(train_losses))
+            m_train_acc = np.mean(train_y == (train_preds > 0.5) * 1.0)
+            pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
+
+    return w, all_ws
+
+
+def select_matrix_cross(index, square_matrix):
+    masked_matrix = np.zeros_like(square_matrix)
+    selection_matrix = np.full_like(square_matrix, False, bool)
+    selection_matrix[:, index] = True
+    selection_matrix[index, :] = True
+    masked_matrix[selection_matrix] = square_matrix[selection_matrix]
+    return masked_matrix
 
 
 # p(w_candidate|w_last_accepted, Σ) = N(w_last_accepted; Σ)
@@ -112,7 +149,7 @@ def accept_or_reject_sample(w_candidate, w_last, X, t, w_mu, w_cov):
     # r = np.log(r)
     # thresh = np.log(thresh)
     # inv_sampling_val = np.log(inv_sampling_val)
-    
+
     is_accepted = True if (r > thresh) else (inv_sampling_val < r)
     # print(f"{is_accepted} : {inv_sampling_val:.4f} < {r:.4f}{'*' if r>thresh else ''}, {w_candidate.T}")
     return is_accepted
@@ -143,13 +180,13 @@ w_cov_prior = np.eye(train_X.shape[1]) * assumed_sigma_sq
 num_iter = 1000
 # print("====================")
 
-w_hat, all_w_hats = metropolis_hastings_algorithm(train_X,
-                                                  train_y,
-                                                  w_mu_prior,
-                                                  w_cov_prior,
-                                                  assumed_sigma_sq,
-                                                  num_iter=num_iter)
-print("Expected Mean W",all_w_hats[num_iter // 10:].mean(axis=0))
+w_hat, all_w_hats = metropolis_hastings_algorithm_perpendicular(train_X,
+                                                                train_y,
+                                                                w_mu_prior,
+                                                                w_cov_prior,
+                                                                assumed_sigma_sq,
+                                                                num_iter=num_iter)
+print("Expected Mean W", all_w_hats[num_iter // 10:].mean(axis=0))
 
 
 ## %%
@@ -157,6 +194,7 @@ def predict(ws, val_X, num_samples=1000):
     logits = val_X @ ws.T
     probabilities = sigmoid(logits).mean(axis=1)
     return probabilities[:, None]
+
 
 ## %%
 fig, (ax1) = plt.subplots(1, 1, figsize=(15, 15))
@@ -175,7 +213,7 @@ CS = ax1.contour(X, Y, Z_True)
 # ax1.clabel(CS, inline=True, fontsize=10)
 ax1.plot(all_w_hats[:burnin_period, -2], all_w_hats[:burnin_period, -1])
 ax1.scatter(all_w_hats[0][0], all_w_hats[0][1], s=100, c='green', label="start")
-ax1.scatter(all_w_hats[burnin_period-1][-2], all_w_hats[burnin_period-1][-1], s=100, c='red', label="end")
+ax1.scatter(all_w_hats[burnin_period - 1][-2], all_w_hats[burnin_period - 1][-1], s=100, c='red', label="end")
 ax1.set_xlabel("w1")
 ax1.set_ylabel("w2")
 # ax1.legend()
@@ -224,8 +262,6 @@ ax2.set_title("Approximation close-up")
 # ax2.set_zlim3d(ax1.get_zlim3d())
 # fig.tight_layout()
 plt.show()
-
-
 
 # %%
 plt.plot(all_w_hats)

@@ -33,12 +33,12 @@ def observed_data_binary(d: int = 10, w1=2, w2=2, std=3, with_err=False):
     if with_err:
         err = np.random.randn(d) * 0.10
         probability = probability + err
-    z = probability > 0.5
+    z = probability < 0.5
     return x, y, z
 
 
 n = 1000
-w1, w2 = -6, 5
+w1, w2 = -6, 1
 xstd = 1
 val_n = 100
 p_ord = 1
@@ -177,7 +177,7 @@ all_val_accs = []
 assumed_sigma_sq = 1
 w_mu_prior = np.ones((train_X.shape[1], 1))
 w_cov_prior = np.eye(train_X.shape[1]) * assumed_sigma_sq
-num_iter = 1000
+num_iter = 200
 # print("====================")
 
 w_hat, all_w_hats = metropolis_hastings_algorithm_perpendicular(train_X,

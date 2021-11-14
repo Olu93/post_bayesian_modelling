@@ -33,12 +33,12 @@ def observed_data_binary(d: int = 10, w1=2, w2=2, std=3, with_err=False):
     if with_err:
         err = np.random.randn(d) * 0.10
         probability = probability + err
-    z = probability < 0.5
+    z = probability > 0.5
     return x, y, z
 
 
 n = 1000
-w1, w2 = -6, 10
+w1, w2 = -6, 5
 xstd = 1
 val_n = 100
 p_ord = 1
@@ -74,43 +74,48 @@ def metropolis_hastings_algorithm(X, t, w_init, w_cov_prior, sigma_sq=None, num_
     all_ws[0] = w
     for i in pbar:
         w_last = all_ws[i]
-        all_ws[i + 1] = np.copy(w_last)
+        # all_ws[i + 1] = np.copy(w_last)
         w_current = all_ws[i + 1]
-        for j in range(len(w)):
-            w_candidate = propose_new_sample(j, w_current, w_cov_prior)
-            # is_accepted = accept_or_reject_sample(w_candidate, all_ws[i + 1], X, t, last_accepted, w_cov_prior)
-            is_accepted = accept_or_reject_sample(w_candidate, w_current, X, t, w_init_flat, w_cov_prior)
-            w = w_candidate if is_accepted else w
-            all_ws[i + 1] = np.copy(w_candidate)
-            w_current = all_ws[i + 1]
-            train_preds = train_X @ w
-            train_losses = train_y - train_preds
-            m_train_loss = np.mean(np.abs(train_losses))
-            m_train_acc = np.mean(train_y == (train_preds > 0.5) * 1.0)
-            pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
+        # for j in range(len(w)):
+        w_candidate = propose_new_sample(w_last, w_cov_prior)
+        is_accepted = accept_or_reject_sample(w_candidate, w_last, X, t, w_init_flat, w_cov_prior)
+        w = w_candidate if is_accepted else w
+        all_ws[i + 1] = np.copy(w_candidate)
+        # w_current = all_ws[i + 1]
+        train_preds = train_X @ w
+        train_losses = train_y - train_preds
+        m_train_loss = np.mean(np.abs(train_losses))
+        m_train_acc = np.mean(train_y == (train_preds > 0.5) * 1.0)
+        pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
     return w, all_ws
 
 
 # p(w_candidate|w_last_accepted, Σ) = N(w_last_accepted; Σ)
-def propose_new_sample(w_index, w_last_accepted, w_cov):
-    w_delta = np.random.multivariate_normal(np.zeros_like(w_last_accepted).flatten(), w_cov)
-    w_candidate = np.copy(w_last_accepted)
-    w_candidate[w_index] = w_candidate[w_index] + w_delta[w_index]
+def propose_new_sample(w_last_accepted, w_cov):
+    w_candidate = np.random.multivariate_normal(w_last_accepted, w_cov)
+    # w_candidate = np.copy(w_last_accepted)
+    # w_candidate[w_index] = w_candidate[w_index] + w_delta[w_index]
     return w_candidate
 
 
 def accept_or_reject_sample(w_candidate, w_last, X, t, w_mu, w_cov):
+    thresh = 1
     log_prior_candidate = stats.multivariate_normal.logpdf(w_candidate, w_mu, w_cov)
     log_prior_last = stats.multivariate_normal.logpdf(w_last, w_mu, w_cov)
     log_likelihood_candidate = log_likelihood_function(w_candidate, X, t)
     log_likelihood_last = log_likelihood_function(w_last, X, t)
     r_candidate = log_prior_candidate + log_likelihood_candidate
     r_last = log_prior_last + log_likelihood_last
-    r = r_candidate - r_last
+    r = np.exp(r_candidate - r_last)
     inv_sampling_val = np.random.uniform()
-    is_accepted = True if r > 1 else inv_sampling_val <= np.exp(r)
-    # print(f"{is_accepted} : {inv_sampling_val:.4f} < {np.exp(r):.4f}, {w_candidate.T}")
+
+    # r = np.log(r)
+    # thresh = np.log(thresh)
+    # inv_sampling_val = np.log(inv_sampling_val)
+    
+    is_accepted = True if (r > thresh) else (inv_sampling_val < r)
+    # print(f"{is_accepted} : {inv_sampling_val:.4f} < {r:.4f}{'*' if r>thresh else ''}, {w_candidate.T}")
     return is_accepted
 
 
@@ -134,9 +139,9 @@ all_deltas = []
 all_train_accs = []
 all_val_accs = []
 assumed_sigma_sq = 1
-w_mu_prior = np.zeros((train_X.shape[1], 1))
+w_mu_prior = np.ones((train_X.shape[1], 1))
 w_cov_prior = np.eye(train_X.shape[1]) * assumed_sigma_sq
-num_iter = 500
+num_iter = 1000
 # print("====================")
 
 w_hat, all_w_hats = metropolis_hastings_algorithm(train_X,

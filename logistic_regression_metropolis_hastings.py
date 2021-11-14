@@ -72,16 +72,17 @@ def metropolis_hastings_algorithm(X, t, w_init, w_cov_prior, sigma_sq=None, num_
     w = np.random.multivariate_normal(w_init_flat, w_cov_prior)
     pbar = tqdm(range(num_iter - 1))
     all_ws[0] = w
+    w_last = all_ws[0]
+    w_current = all_ws[0]
     for i in pbar:
-        w_last = all_ws[i]
         # all_ws[i + 1] = np.copy(w_last)
-        w_current = all_ws[i + 1]
         # for j in range(len(w)):
-        w_candidate = propose_new_sample(w_last, w_cov_prior)
+        w_candidate = propose_new_sample(w_current, w_cov_prior)
         is_accepted = accept_or_reject_sample(w_candidate, w_last, X, t, w_init_flat, w_cov_prior)
         w = w_candidate if is_accepted else w
         all_ws[i + 1] = np.copy(w_candidate)
-        # w_current = all_ws[i + 1]
+        w_last = all_ws[i]
+        w_current = all_ws[i + 1]
         train_preds = train_X @ w
         train_losses = train_y - train_preds
         m_train_loss = np.mean(np.abs(train_losses))

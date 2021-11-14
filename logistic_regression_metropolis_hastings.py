@@ -21,31 +21,31 @@ IS_EXACT_FORMULA = True
 
 
 def true_function_sigmoid(x, y, w1, w2):
-    return 1 / (1 + np.exp(w1 * x + w2 * y))
+    return 1 / (1 + np.exp(-(w1 * x + w2 * y)))
 
 
 def observed_data_binary(d: int = 10, w1=2, w2=2, std=3, with_err=False):
-    data = np.random.normal(0, std, size=(d, 2))
-    # data = np.random.uniform(-std, std, size=(d, 2))
+    # data = np.random.normal(0, std, size=(d, 2))
+    data = np.random.uniform(-std, std, size=(d, 2))
     # print(data)
     x, y = data[:, 0], data[:, 1]
     probability = true_function_sigmoid(x, y, w1, w2)
     if with_err:
         err = np.random.randn(d) * 0.10
         probability = probability + err
-    z = probability < 0.5
+    z = (probability >= 0.5) * 1
     return x, y, z
 
 
 n = 1000
-w1, w2 = -6, 1
-xstd = 1
+w1, w2 = 1, 3
+xstd = 10
 val_n = 100
 p_ord = 1
 iterations = 50
 smooth = 1
-data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, True)).T)
-val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, True)).T)
+data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, False)).T)
+val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, False)).T)
 display(data.max(axis=0))
 display(data.min(axis=0))
 display(data.mean(axis=0))
@@ -65,57 +65,101 @@ val_y = val_data[:, -1][:, None]
 #   - Predictive distribution is asymptotically equal to the average draws with a sampled posterior value w_s
 
 
-# %%
+## %%
 def metropolis_hastings_algorithm_diagonal(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
-    all_ws = np.zeros((num_iter, len(w_init)))
-    w_init_flat = w_init.flatten()
-    w = np.random.multivariate_normal(w_init_flat, w_cov_prior)
+    all_ws = np.zeros((num_iter, len(w_init), 1))
+    num_features = len(w_init)
+    w_last = w_init
+    w_current = np.random.multivariate_normal(w_init.flat, w_cov_prior)
     pbar = tqdm(range(num_iter - 1))
-    all_ws[0] = w
-    w_last = all_ws[0]
-    w_current = all_ws[0]
     for i in pbar:
         w_candidate = propose_new_sample(w_last, w_cov_prior)
-        is_accepted = accept_or_reject_sample(w_candidate, w_current, X, t, w_init_flat, w_cov_prior)
-        w = w_candidate if is_accepted else w
-        all_ws[i + 1] = np.copy(w)
+        is_accepted = accept_or_reject_sample(w_candidate, w_current, X, t, w_init, w_cov_prior)
+        w_current = w_candidate if is_accepted else w_current
+        all_ws[i + 1] = np.copy(w_current)
         w_last = all_ws[i]
         w_current = all_ws[i + 1]
-        train_preds = train_X @ w
-        train_losses = train_y - train_preds
-        m_train_loss = np.mean(np.abs(train_losses))
-        m_train_acc = np.mean(train_y == (train_preds > 0.5) * 1.0)
+        m_train_loss, m_train_acc = compute_metrics(w_current, train_X, train_y)
         pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
-    return w, all_ws
+    return w_current, all_ws.reshape(num_iter, -1)
 
 
 def metropolis_hastings_algorithm_perpendicular(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
-    all_ws = np.zeros((num_iter, len(w_init)))
-    w_init_flat = w_init.flatten()
-    w = np.random.multivariate_normal(w_init_flat, w_cov_prior)
+    all_ws = np.zeros((num_iter, len(w_init), 1))
+    num_features = len(w_init)
+    w_last = w_init
+    w_current = np.random.multivariate_normal(w_init.flat, w_cov_prior)[:, None]
     pbar = tqdm(range(num_iter - 1))
-    all_ws[0] = w
-    w_last = all_ws[0]
-    w_current = all_ws[0]
     for i in pbar:
-        for j in range(len(w_init_flat)):
+        for j in range(num_features):
             dim_manipulation_cov_prior = np.zeros_like(w_cov_prior)
             dim_manipulation_cov_prior[j, j] = w_cov_prior[j, j]
-            # dim_manipulation_cov_prior = select_matrix_cross(j, w_cov_prior)
             w_candidate = propose_new_sample(w_last, dim_manipulation_cov_prior)
-            is_accepted = accept_or_reject_sample(w_candidate, w_current, X, t, w_init_flat, w_cov_prior)
-            w = w_candidate if is_accepted else w
-            all_ws[i + 1] = np.copy(w)
+            is_accepted = accept_or_reject_sample(w_candidate, w_current, X, t, w_init, w_cov_prior)
+            w_selected = w_candidate if is_accepted else w_last
+            all_ws[i + 1] = np.copy(w_selected)
             w_last = all_ws[i]
             w_current = all_ws[i + 1]
-            train_preds = train_X @ w
-            train_losses = train_y - train_preds
-            m_train_loss = np.mean(np.abs(train_losses))
-            m_train_acc = np.mean(train_y == (train_preds > 0.5) * 1.0)
+            m_train_loss, m_train_acc = compute_metrics(w_current, train_X, train_y)
             pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
-    return w, all_ws
+    return w_selected, all_ws.reshape(num_iter, -1)
+
+
+# p(w_candidate|w_last_accepted, Σ) = N(w_last_accepted; Σ)
+def propose_new_sample(w_last_accepted, w_cov):
+    w_candidate = np.random.multivariate_normal(w_last_accepted.flat, w_cov)[:, None]
+    return w_candidate
+
+
+def accept_or_reject_sample(w_candidate, w_last, X, t, w_mu, w_cov):
+    thresh = 1.0
+    inv_sampling_val = np.random.uniform()
+    log_prior_candidate = stats.multivariate_normal.logpdf(w_candidate.T, w_mu.flat, w_cov)
+    log_prior_last = stats.multivariate_normal.logpdf(w_last.T, w_mu.flat, w_cov)
+    log_likelihood_candidate = log_likelihood_function(w_candidate, X, t)
+    log_likelihood_last = log_likelihood_function(w_last, X, t)
+    log_r_candidate = log_prior_candidate + log_likelihood_candidate
+    log_r_last = log_prior_last + log_likelihood_last
+    r = log_r_candidate - log_r_last
+    r = np.exp(r)
+
+    r = np.log(r)
+    thresh = np.log(thresh)
+    inv_sampling_val = np.log(inv_sampling_val)
+
+    is_accepted = True if (r >= thresh) else (inv_sampling_val < r)
+
+    str_text = f"{'Y' if is_accepted else 'F'}: "
+    if (r >= thresh):
+        str_text = str_text + f'r={r:.4f} >= t={thresh:.4f} | automatic accept'
+    else:
+        if (inv_sampling_val < r):
+            str_text = str_text + f'u={inv_sampling_val:4.4f} < r={r:.4f}'
+        if not (inv_sampling_val < r):
+            str_text = str_text + f'u={inv_sampling_val:4.4f} < r={r:.4f}'
+    print(f"{str_text}, {w_candidate.T}")
+
+    return is_accepted
+
+
+def log_likelihood_function(w, X, t):
+    probabilities = sigmoid(X @ w)
+    all_log_likelihoods = (t * np.log(probabilities)) + (1 - t) * np.log((1 - probabilities))
+    return np.nansum(all_log_likelihoods)
+
+
+def sigmoid(x):
+    return (1 / (1 + np.exp(-x)))
+
+
+def compute_metrics(w, X, y):
+    train_preds = sigmoid(X @ w)
+    train_losses = y - train_preds
+    m_train_loss = np.mean(np.abs(train_losses))
+    m_train_acc = np.mean(y == ((train_preds >= 0.5) * 1.0))
+    return m_train_loss, m_train_acc
 
 
 def select_matrix_cross(index, square_matrix):
@@ -125,44 +169,6 @@ def select_matrix_cross(index, square_matrix):
     selection_matrix[index, :] = True
     masked_matrix[selection_matrix] = square_matrix[selection_matrix]
     return masked_matrix
-
-
-# p(w_candidate|w_last_accepted, Σ) = N(w_last_accepted; Σ)
-def propose_new_sample(w_last_accepted, w_cov):
-    w_candidate = np.random.multivariate_normal(w_last_accepted, w_cov)
-    # w_candidate = np.copy(w_last_accepted)
-    # w_candidate[w_index] = w_candidate[w_index] + w_delta[w_index]
-    return w_candidate
-
-
-def accept_or_reject_sample(w_candidate, w_last, X, t, w_mu, w_cov):
-    thresh = 1
-    log_prior_candidate = stats.multivariate_normal.logpdf(w_candidate, w_mu, w_cov)
-    log_prior_last = stats.multivariate_normal.logpdf(w_last, w_mu, w_cov)
-    log_likelihood_candidate = log_likelihood_function(w_candidate, X, t)
-    log_likelihood_last = log_likelihood_function(w_last, X, t)
-    r_candidate = log_prior_candidate + log_likelihood_candidate
-    r_last = log_prior_last + log_likelihood_last
-    r = np.exp(r_candidate - r_last)
-    inv_sampling_val = np.random.uniform()
-
-    # r = np.log(r)
-    # thresh = np.log(thresh)
-    # inv_sampling_val = np.log(inv_sampling_val)
-
-    is_accepted = True if (r > thresh) else (inv_sampling_val < r)
-    # print(f"{is_accepted} : {inv_sampling_val:.4f} < {r:.4f}{'*' if r>thresh else ''}, {w_candidate.T}")
-    return is_accepted
-
-
-def log_likelihood_function(w, X, t):
-    probabilities = sigmoid(X @ w)[:, None]
-    all_log_likelihoods = (t * np.log(probabilities)) + (1 - t) * np.log((1 - probabilities))
-    return np.nansum(all_log_likelihoods)
-
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
 
 
 # w_hat = np.random.normal(1, 0.5, size=(train_X.shape[1], 1)) * 2
@@ -177,15 +183,15 @@ all_val_accs = []
 assumed_sigma_sq = 1
 w_mu_prior = np.ones((train_X.shape[1], 1))
 w_cov_prior = np.eye(train_X.shape[1]) * assumed_sigma_sq
-num_iter = 200
+num_iter = 100
 # print("====================")
 
-w_hat, all_w_hats = metropolis_hastings_algorithm_perpendicular(train_X,
-                                                                train_y,
-                                                                w_mu_prior,
-                                                                w_cov_prior,
-                                                                assumed_sigma_sq,
-                                                                num_iter=num_iter)
+w_hat, all_w_hats = metropolis_hastings_algorithm_diagonal(train_X,
+                                                           train_y,
+                                                           w_mu_prior,
+                                                           w_cov_prior,
+                                                           assumed_sigma_sq,
+                                                           num_iter=num_iter)
 print("Expected Mean W", all_w_hats[num_iter // 10:].mean(axis=0))
 
 
@@ -212,7 +218,7 @@ Z_True = distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shap
 CS = ax1.contour(X, Y, Z_True)
 # ax1.clabel(CS, inline=True, fontsize=10)
 ax1.plot(all_w_hats[:burnin_period, -2], all_w_hats[:burnin_period, -1])
-ax1.scatter(all_w_hats[0][0], all_w_hats[0][1], s=100, c='green', label="start")
+ax1.scatter(all_w_hats[0][-2], all_w_hats[0][-1], s=100, c='green', label="start")
 ax1.scatter(all_w_hats[burnin_period - 1][-2], all_w_hats[burnin_period - 1][-1], s=100, c='red', label="end")
 ax1.set_xlabel("w1")
 ax1.set_ylabel("w2")

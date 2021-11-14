@@ -5,7 +5,7 @@ import pandas as pd
 from IPython.display import display
 import scipy
 import random as r
-from data import observed_data, true_function
+from data import observed_data, true_function_polynomial
 from helper import add_bias_vector, create_polinomial_bases
 
 # %%
@@ -25,12 +25,12 @@ train_X.shape
 # %%
 
 
-def compute_weights(X, y, lmb):
+def compute_weights(X, y, lmb=0):
     w = np.linalg.inv(X.T @ X + lmb * np.eye(X.shape[1])) @ X.T @ y
     return w
 
 
-w_pred = compute_weights(train_X, y, 0.1).reshape(-1, 1)
+w_pred = compute_weights(train_X, y).reshape(-1, 1)
 w_pred
 # %%
 

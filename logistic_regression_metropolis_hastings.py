@@ -75,12 +75,10 @@ def metropolis_hastings_algorithm(X, t, w_init, w_cov_prior, sigma_sq=None, num_
     w_last = all_ws[0]
     w_current = all_ws[0]
     for i in pbar:
-        # all_ws[i + 1] = np.copy(w_last)
-        # for j in range(len(w)):
-        w_candidate = propose_new_sample(w_current, w_cov_prior)
-        is_accepted = accept_or_reject_sample(w_candidate, w_last, X, t, w_init_flat, w_cov_prior)
+        w_candidate = propose_new_sample(w_last, w_cov_prior)
+        is_accepted = accept_or_reject_sample(w_candidate, w_current, X, t, w_init_flat, w_cov_prior)
         w = w_candidate if is_accepted else w
-        all_ws[i + 1] = np.copy(w_candidate)
+        all_ws[i + 1] = np.copy(w)
         w_last = all_ws[i]
         w_current = all_ws[i + 1]
         train_preds = train_X @ w

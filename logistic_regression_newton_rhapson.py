@@ -60,30 +60,29 @@ val_y = val_data[:, -1][:, None]
 #   - Stop if $F^{\prime}(x_{n}) = 0$. This is extremely unlikely but if it does happen then computers do not like dividing by zero. It means the method has located a turning point of the function.
 
 
-def newton_method(X, t, w_init, sigma_sq, num_iter, first_derivation, second_derivation):
+def newton_method_slow(X, t, w_init, sigma_sq, num_iter, first_derivation, second_derivation):
 
     num_features = X.shape[1]
-    indices = np.random.randint(0, len(X), size=num_iter)
-    all_ws = np.zeros((num_iter + 1, num_features, 1))
-    all_deltas = np.zeros((num_iter + 1, num_features, 1))
-    all_gradients = np.zeros((num_iter + 1, num_features, 1))
-    all_hessians = np.zeros((num_iter + 1, num_features, num_features))
+    num_true_run_length = num_iter + 1
+    all_ws = np.zeros((num_true_run_length, num_features, 1))
+    all_deltas = np.zeros((num_true_run_length, num_features, 1))
+    all_gradients = np.zeros((num_true_run_length, num_features, 1))
+    all_hessians = np.zeros((num_true_run_length, num_features, num_features))
     w = w_init
     all_ws[0] = w_init
 
-    pbar = tqdm(range(1, num_iter))
+    pbar = tqdm(range(1, num_true_run_length))
     for i in pbar:
-        selected_datapoint = indices[i - 1]
-        x_n = X[selected_datapoint, :][None, :]
-        t_n = t[selected_datapoint, :]
-        gradient = first_derivation(w, x_n, t_n, sigma_sq)
-        hessian = second_derivation(w, x_n, t_n, sigma_sq)
+        gradient = first_derivation(w, X, t, sigma_sq)
+        hessian = second_derivation(w, X, t, sigma_sq)
         weight_change = (np.linalg.inv(hessian) @ gradient)  # / (len(X) if use_mean else 1)
         w = w - weight_change
         all_ws[i] = w
         all_deltas[i] = weight_change
         all_gradients[i] = gradient
         all_hessians[i] = hessian
+        if i == num_iter - 1:
+            print(gradient, hessian, weight_change)
         m_train_acc, m_train_loss = compute_metrics(w, X, t)
         pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
@@ -111,14 +110,20 @@ def first_derivation(w, X, t, sigma_sq):
 #     return (-1 / sigma_sq) * np.eye(len(w)) - H
 
 
-def second_derivation(w, x, t, sigma_sq):
+def second_derivation(w, X, t, sigma_sq):
     # According to Book by Rogers and Girolami
-    x = x.T
-    block1 = (-1 / sigma_sq) * np.eye(len(w))
-    block2 = x @ x.T
-    P_n = sigmoid(x.T @ w)
-    block3 = (P_n * (1 - P_n))
-    return block1 - block2 * block3
+    num_features = len(w)
+    cov_result = np.zeros((num_features, num_features))
+    for i in range(len(X)):
+        x = X[i][None, :]
+        xT = x.T
+        block1 = (-1 / sigma_sq) * np.eye(num_features)
+        block2 = xT @ xT.T
+        P_n = sigmoid(x @ w)
+        block3 = (P_n * (1 - P_n))
+        cov_result += block1 - block2 * block3
+
+    return cov_result
 
 
 def compute_metrics(w, X, y):
@@ -137,12 +142,12 @@ all_val_losses = []
 all_train_accs = []
 all_val_accs = []
 
-all_ws_hats, all_deltas, all_gradients, all_hessians = newton_method(
+all_ws_hats, all_deltas, all_gradients, all_hessians = newton_method_slow(
     train_X,
     train_y,
     w_start,
     assumed_sigma_sq,
-    100,
+    20,
     first_derivation,
     second_derivation,
 )
@@ -156,28 +161,11 @@ for i in range(len(all_ws_hats)):
     all_train_accs.append(m_train_acc)
     all_val_accs.append(m_val_acc)
 
-# with tqdm(range(iterations)) as pbar:
-#     for i in pbar:
-#         # print("====================")
-#         w, w_delta, gradient, hessian = newton_method_vectorised(
-#             w,
-#             train_X,
-#             train_y,
-#             assumed_sigma_sq,
-#             first_derivation,
-#             second_derivation,
-#         )
-#         all_ws.append(w)
-#         all_deltas.append(w_delta)
-#         m_train_acc, m_val_acc, m_train_loss, m_val_loss = compute_metrics(train_X, train_y, val_X, val_y, w)
-#         all_train_losses.append(m_train_acc)
-#         all_val_losses.append(m_val_acc)
-#         pbar.set_description_str(f"Train: {m_train_acc:.4f} | Val: {m_val_acc:.4f}")
 print(f"Final weights: ", all_ws_hats[-1])
 
 ## %%
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
-burn_in_period = 20
+burn_in_period = 0
 all_ws_hats = np.hstack(all_ws_hats).T[::1]
 
 

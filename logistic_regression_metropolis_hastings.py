@@ -22,8 +22,8 @@ IS_EXACT_FORMULA = True
 # %%
 
 n = 10000
-w1_mu, w2_mu = 3, -3
-w_cov = np.array([[1, 0], [0, 1]])
+w1_mu, w2_mu = 1, -3
+w_cov = np.array([[1, -0.5], [-0.5, 1]])
 w_mu = np.array([w1_mu, w2_mu])
 w_distribution = stats.multivariate_normal(w_mu, w_cov)
 true_w_sample = w_distribution.rvs()
@@ -218,7 +218,7 @@ def plot_w_path(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", precision
     Z_True = stats.multivariate_normal(w_mu, w_cov).pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
 
     CS = ax.contour(X, Y, Z_True)
-    ax1.clabel(CS, inline=True, fontsize=10)
+    ax.clabel(CS, inline=True, fontsize=10)
     ax.plot(all_w_hats[:burn_in_period, -2], all_w_hats[:burn_in_period, -1])
     ax.scatter(all_w_hats[:burn_in_period, -2], all_w_hats[:burn_in_period, -1], s=10, c="blue", label="step")
     ax.scatter(all_w_hats[0][-2], all_w_hats[0][-1], s=100, c='green', label="start")
@@ -277,8 +277,8 @@ def plot_w_samples(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", precis
     lambda_ = np.sqrt(lambda_)
     ellipsis = Ellipse(
         xy=(w_sample_mean_relevant[-2], w_sample_mean_relevant[-1]),
-        width=4 * lambda_[0] * np.sqrt(5.991),
-        height=4 * lambda_[1] * np.sqrt(5.991),
+        width=2 * lambda_[0] * np.sqrt(5.991),
+        height=2 * lambda_[1] * np.sqrt(5.991),
         angle=np.rad2deg(np.arctan2(*v[:,0][::-1])),
         edgecolor='r',
         fc='None',

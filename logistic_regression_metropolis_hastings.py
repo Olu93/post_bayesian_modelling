@@ -17,17 +17,17 @@ from tqdm.notebook import tqdm
 # %%
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 IS_EXACT_FORMULA = True
-
+np.random.seed(42)
 # %%
 
 n = 1000
-w1, w2 = 1, -3
+w1, w2 = 3, -3
 xstd = 1000
 val_n = 100
 p_ord = 1
 iterations = 50
 smooth = 1
-noise = 10
+noise = 0
 data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, noise)).T)
 val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, noise)).T)
 display(data.max(axis=0))
@@ -50,46 +50,46 @@ val_y = val_data[:, -1][:, None]
 
 
 def metropolis_hastings_algorithm_diagonal(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
-    all_ws = np.zeros((num_iter, len(w_init), 1))
+    all_ws = np.zeros((num_iter + 1, len(w_init), 1))
     num_features = len(w_init)
     w_last = np.random.multivariate_normal(w_init.flat, w_cov_prior)[:, None]
     w_current = w_last
     all_ws[0] = w_last
-    pbar = tqdm(range(num_iter - 1))
+    pbar = tqdm(range(1, num_iter))
     for i in pbar:
         w_candidate = propose_new_sample(w_last, w_cov_prior)
         is_accepted = accept_or_reject_sample(w_candidate, w_current, X, t, w_init, w_cov_prior)
         w_selected = w_candidate if is_accepted else w_current
-        all_ws[i + 1] = np.copy(w_selected)
-        w_current = all_ws[i + 1]
-        w_last = all_ws[i]
+        all_ws[i] = np.copy(w_selected)
+        w_last = all_ws[i - 1]
+        w_current = w_selected
         m_train_loss, m_train_acc = compute_metrics(w_current, train_X, train_y)
         pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
-    return w_current, all_ws.reshape(num_iter, -1)
+    return w_current, all_ws.reshape(num_iter + 1, -1)
 
 
 def metropolis_hastings_algorithm_perpendicular(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
-    all_ws = np.zeros((num_iter, len(w_init), 1))
+    all_ws = np.zeros((num_iter + 1, len(w_init), 1))
     num_features = len(w_init)
     w_last = np.random.multivariate_normal(w_init.flat, w_cov_prior)[:, None]
     w_current = w_last
     all_ws[0] = w_last
-    pbar = tqdm(range(num_iter - 1))
+    pbar = tqdm(range(1, num_iter))
     for i in pbar:
         for j in range(num_features):
             dim_manipulation_cov_prior = np.zeros_like(w_cov_prior)
             dim_manipulation_cov_prior[j, j] = w_cov_prior[j, j]
             w_candidate = propose_new_sample(w_last, dim_manipulation_cov_prior)
             is_accepted = accept_or_reject_sample(w_candidate, w_current, X, t, w_init, w_cov_prior)
-            w_selected = w_candidate if is_accepted else w_last
-            all_ws[i + 1] = np.copy(w_selected)
-            w_current = all_ws[i + 1]
-            w_last = all_ws[i]
+            w_selected = w_candidate if is_accepted else w_current
+            all_ws[i] = np.copy(w_selected)
+            w_current = all_ws[i]
+            w_last = all_ws[i-1]
             m_train_loss, m_train_acc = compute_metrics(w_current, train_X, train_y)
             pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
-    return w_selected, all_ws.reshape(num_iter, -1)
+    return w_selected, all_ws.reshape(num_iter + 1, -1)
 
 
 # p(w_candidate|w_last_accepted, Σ) = N(w_last_accepted; Σ)
@@ -153,10 +153,12 @@ def select_matrix_cross(index, square_matrix):
     masked_matrix[selection_matrix] = square_matrix[selection_matrix]
     return masked_matrix
 
+
 def predict(ws, val_X, num_samples=1000):
     logits = val_X @ ws.T
     probabilities = sigmoid(logits).mean(axis=1)
     return probabilities[:, None]
+
 
 # w_hat = np.random.normal(1, 0.5, size=(train_X.shape[1], 1)) * 2
 # w = np.zeros(shape=(train_X.shape[1], 1))
@@ -168,20 +170,18 @@ all_deltas = []
 all_train_accs = []
 all_val_accs = []
 assumed_sigma_sq = 1
-w_mu_prior = np.ones((train_X.shape[1], 1)) + 1
+w_mu_prior = np.ones((train_X.shape[1], 1))
 w_cov_prior = np.eye(train_X.shape[1]) * assumed_sigma_sq
-num_iter = 10000
+num_iter = 1000
 # print("====================")
 
-w_hat, all_w_hats = metropolis_hastings_algorithm_diagonal(train_X,
-                                                           train_y,
-                                                           w_mu_prior,
-                                                           w_cov_prior,
-                                                           assumed_sigma_sq,
-                                                           num_iter=num_iter)
+w_hat, all_w_hats = metropolis_hastings_algorithm_perpendicular(train_X,
+                                                                train_y,
+                                                                w_mu_prior,
+                                                                w_cov_prior,
+                                                                assumed_sigma_sq,
+                                                                num_iter=num_iter)
 print("Expected Mean W", all_w_hats[num_iter // 10:].mean(axis=0))
-
-
 
 ## %%
 fig, (ax1) = plt.subplots(1, 1, figsize=(15, 15))

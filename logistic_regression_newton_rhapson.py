@@ -16,7 +16,7 @@ from tqdm.notebook import tqdm
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 IS_EXACT_FORMULA = True
 # %%
-n = 1000
+n = 10000
 w1_mu, w2_mu = 1, -3
 w_cov = np.array([[1, -0.5], [-0.5, 1]])
 w_mu = np.array([w1_mu, w2_mu])
@@ -26,7 +26,7 @@ w1, w2 = true_w_sample[0], true_w_sample[1]
 xstd = 1000
 val_n = 100
 p_ord = 1
-iterations = 1000
+iterations = 20
 smooth = 1
 data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, False)).T)
 val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, False)).T)
@@ -149,7 +149,7 @@ all_ws_hats, all_deltas, all_gradients, all_hessians = newton_method(
     train_y,
     w_start,
     assumed_sigma_sq,
-    100,
+    iterations,
     first_derivation,
     second_derivation,
 )

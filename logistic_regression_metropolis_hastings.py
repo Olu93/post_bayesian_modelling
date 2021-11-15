@@ -21,7 +21,12 @@ IS_EXACT_FORMULA = True
 # %%
 
 n = 10000
-w1, w2 = 1, -3
+w1_mu, w2_mu = 3, -3
+w_cov = np.array([[1, 0], [0, 1]])
+w_mu = np.array([w1_mu, w2_mu])
+w_distribution = stats.multivariate_normal(w_mu, w_cov)
+true_w_sample = w_distribution.rvs()
+w1, w2 = true_w_sample[0], true_w_sample[1]
 xstd = 1000
 val_n = 100
 p_ord = 1
@@ -30,9 +35,7 @@ smooth = 1
 noise = 0
 data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, noise)).T)
 val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, noise)).T)
-# display(data.max(axis=0))
-# display(data.min(axis=0))
-# display(data.mean(axis=0))
+print(f"True weights are : {w1, w2}")
 
 train_X = data[:, :-1]
 # train_X = add_bias_vector(create_polinomial_bases(data[:, :-1], p_ord))
@@ -178,36 +181,58 @@ w_cov_prior = np.eye(train_X.shape[1]) * assumed_sigma_sq
 num_iter = 1000
 # print("====================")
 
-w_hat, all_w_hats = metropolis_hastings_algorithm_orthogonal(train_X,
-                                                           train_y,
-                                                           w_mu_prior,
-                                                           w_cov_prior,
-                                                           assumed_sigma_sq,
-                                                           num_iter=num_iter)
-print("Expected Mean W", all_w_hats[num_iter // 10:].mean(axis=0))
+w_hat_diagonal, all_w_hats_diagonal = metropolis_hastings_algorithm_diagonal(train_X,
+                                                                             train_y,
+                                                                             w_mu_prior,
+                                                                             w_cov_prior,
+                                                                             assumed_sigma_sq,
+                                                                             num_iter=num_iter)
+w_hat_orthogonal, all_w_hats_orthogonal = metropolis_hastings_algorithm_orthogonal(train_X,
+                                                                                   train_y,
+                                                                                   w_mu_prior,
+                                                                                   w_cov_prior,
+                                                                                   assumed_sigma_sq,
+                                                                                   num_iter=num_iter)
 
-## %%
-fig, (ax1) = plt.subplots(1, 1, figsize=(15, 15))
-w_cov = np.array([[1, 0], [0, 1]])
-w_mu = np.array([w1, w2])
+print("Diag: Expected Mean W", all_w_hats_diagonal[num_iter // 10:].mean(axis=0))
+print("Orth: Expected Mean W", all_w_hats_orthogonal[num_iter // 10:].mean(axis=0))
+
+# %%
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 18))
 burn_in_period = num_iter // 1
 
 
-X = np.linspace(w_mu[0] - w_cov[0, 0], w_mu[0] + w_cov[0, 0], 100)
-Y = np.linspace(w_mu[1] - w_cov[1, 1], w_mu[1] + w_cov[1, 1], 100)
-X, Y = np.meshgrid(X, Y)
-distribution = stats.multivariate_normal(w_mu, w_cov)
-Z_True = distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
+def plot_w_movements(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", precision=2):
+    x_min, y_min = all_w_hats.min(axis=0)
+    x_max, y_max = all_w_hats.max(axis=0)
+    x_cov = precision * np.sqrt(w_cov[0, 0])
+    y_cov = precision * np.sqrt(w_cov[1, 1])
+    x_mu = w_mu[0]
+    y_mu = w_mu[1]
+    x_lims = np.min([x_min, x_mu-x_cov]), np.max([x_max, x_mu+x_cov])
+    y_lims = np.min([y_min, y_mu-x_cov]), np.max([y_max, y_mu+x_cov])
+    X = np.linspace(x_lims[0], x_lims[1], 100)
+    Y = np.linspace(y_lims[0], y_lims[1], 100)
+    X, Y = np.meshgrid(X, Y)
+    Z_True = stats.multivariate_normal(w_mu, w_cov).pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
 
-CS = ax1.contour(X, Y, Z_True)
-# ax1.clabel(CS, inline=True, fontsize=10)
-ax1.plot(all_w_hats[:burn_in_period, -2], all_w_hats[:burn_in_period, -1])
-ax1.scatter(all_w_hats[0][-2], all_w_hats[0][-1], s=100, c='green', label="start")
-ax1.scatter(all_w_hats[burn_in_period - 1][-2], all_w_hats[burn_in_period - 1][-1], s=100, c='red', label="end")
-ax1.set_xlabel("w1")
-ax1.set_ylabel("w2")
-ax1.set_title("True Distribution")
+    CS = ax.contour(X, Y, Z_True)
+    ax1.clabel(CS, inline=True, fontsize=10)
+    ax.plot(all_w_hats[:burn_in_period, -2], all_w_hats[:burn_in_period, -1])
+    ax.scatter(all_w_hats[:burn_in_period, -2], all_w_hats[:burn_in_period, -1], s=10, c="blue", label="step")
+    ax.scatter(all_w_hats[0][-2], all_w_hats[0][-1], s=100, c='green', label="start")
+    ax.scatter(all_w_hats[burn_in_period - 1][-2], all_w_hats[burn_in_period - 1][-1], s=100, c='red', label="end")
+    ax.set_xlabel("w1")
+    ax.set_ylabel("w2")
+    ax.set_xlim(x_lims[0],x_lims[1])
+    ax.set_ylim(y_lims[0],y_lims[1])
+    ax.set_title(f"Weight Movement: {title}")
+    ax.legend()
 
+plot_w_movements(all_w_hats_diagonal, ax1, w_cov, w_mu, burn_in_period, title="Diagonal", precision=2)
+plot_w_movements(all_w_hats_orthogonal, ax2, w_cov, w_mu, burn_in_period, title="Orthogonal", precision=2)
+fig.tight_layout()
+plt.show()
 # %%
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 15))

@@ -60,7 +60,7 @@ val_y = val_data[:, -1][:, None]
 #   - Stop if $F^{\prime}(x_{n}) = 0$. This is extremely unlikely but if it does happen then computers do not like dividing by zero. It means the method has located a turning point of the function.
 
 
-def newton_method_slow(X, t, w_init, sigma_sq, num_iter, first_derivation, second_derivation):
+def newton_method(X, t, w_init, sigma_sq, num_iter, first_derivation, second_derivation):
 
     num_features = X.shape[1]
     num_true_run_length = num_iter + 1
@@ -97,18 +97,18 @@ def first_derivation(w, X, t, sigma_sq):
     return result
 
 
-# def second_derivation(w, X, t, sigma_sq):
-#     # block1 = (-1 / sigma_sq) * np.eye(len(w))
-#     # block2 = np.sum(X * X, axis=1)
-#     block2 = np.matmul(X[:, :, None], X[:, None, :])
-#     block3 = (sigmoid(X @ w) * (1 - sigmoid(X @ w)))[:, :, None]
-#     # return block1 - np.sum(block2 * block3, axis=0)
-#     # Andrew Ng Logistic Regression with Newton-Rhapson https://www.youtube.com/watch?v=fF-6QnVB-7E
-#     H = np.mean(block2 * block3, axis=0)
-#     return (-1 / sigma_sq) * np.eye(len(w)) - H
-
-
 def second_derivation(w, X, t, sigma_sq):
+    # block1 = (-1 / sigma_sq) * np.eye(len(w))
+    # block2 = np.sum(X * X, axis=1)
+    block2 = np.matmul(X[:, :, None], X[:, None, :])
+    block3 = (sigmoid(X @ w) * (1 - sigmoid(X @ w)))[:, :, None]
+    # return block1 - np.sum(block2 * block3, axis=0)
+    # Andrew Ng Logistic Regression with Newton-Rhapson https://www.youtube.com/watch?v=fF-6QnVB-7E
+    H = np.sum(block2 * block3, axis=0)
+    return (-1 / sigma_sq) * np.eye(len(w)) * len(X) - H
+
+
+def second_derivation_slow(w, X, t, sigma_sq):
     # According to Book by Rogers and Girolami
     num_features = len(w)
     cov_result = np.zeros((num_features, num_features))
@@ -140,7 +140,7 @@ all_val_losses = []
 all_train_accs = []
 all_val_accs = []
 
-all_ws_hats, all_deltas, all_gradients, all_hessians = newton_method_slow(
+all_ws_hats, all_deltas, all_gradients, all_hessians = newton_method(
     train_X,
     train_y,
     w_start,
@@ -159,7 +159,7 @@ for i in range(len(all_ws_hats)):
     all_train_accs.append(m_train_acc)
     all_val_accs.append(m_val_acc)
 
-print(f"Final weights: ", all_ws_hats[-1])
+print(f"Final weights: ", all_ws_hats[-1].T)
 
 ## %%
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
@@ -198,28 +198,7 @@ def plot_w_path(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", precision
 
 plot_w_path(all_ws_hats, ax, w_cov, w_mu, burn_in_period, title="Diagonal", precision=2)
 where_it_is_to_much = np.where(np.abs(all_ws_hats).sum(axis=1) > 100)
-print(f"Where the vals are too high: {where_it_is_to_much}")
-# X = np.linspace(w1 - contour_width, w1 + contour_width, 100)
-# Y = np.linspace(w2 - contour_width, w2 + contour_width, 100)
-# X, Y = np.meshgrid(X, Y)
-# distribution = stats.multivariate_normal(w_mu, w_cov)
-# Z = distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
-
-# CS = ax.contour(X, Y, Z)
-# ax.clabel(CS, inline=True, fontsize=10)
-
-# ws = np.hstack(all_ws).T[::1]
-# w1s, w2s = ws[:, -2], ws[:, -1]
-# zws = distribution.pdf(ws[:, [-2, -1]])
-# ax.plot(w1s, w2s)
-# ax.scatter(w1s[0], w2s[0], s=100, c='green', label="start")
-# ax.scatter(w1s[-1], w2s[-1], s=100, c='red', label="end")
-# ax.set_xlabel("w1")
-# ax.set_ylabel("w2")
-# # ax.view_init(0, 15)
-# ax.legend()
-# ax.set_title("Weight movement")
-# plt.show()
+# print(f"Where the vals are too high: {where_it_is_to_much.T}")
 
 # %%
 fig, ax = plt.subplots(1, 1, figsize=(10, 10))

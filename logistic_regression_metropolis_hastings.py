@@ -7,21 +7,22 @@ from numpy.random import multivariate_normal
 import pandas as pd
 from IPython.display import display
 from scipy import stats
+from scipy import special
 from matplotlib import cm
 import random as r
 from data import observed_data, observed_data_binary, observed_data_linear, true_function_polynomial, true_function_sigmoid
-from helper import add_bias_vector, create_polinomial_bases
+from helper import add_bias_vector, create_polinomial_bases, sigmoid
 from tqdm.notebook import tqdm
 
 # %%
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 IS_EXACT_FORMULA = True
+STABILITY_CONSTANT = 0.00000000001
 
 # %%
 
 
-def true_function_sigmoid(x, y, w1, w2):
-    return 1 / (1 + np.exp(-(w1 * x + w2 * y)))
+
 
 
 def observed_data_binary(d: int = 10, w1=2, w2=2, std=3, with_err=False):
@@ -38,8 +39,8 @@ def observed_data_binary(d: int = 10, w1=2, w2=2, std=3, with_err=False):
 
 
 n = 1000
-w1, w2 = 1, 3
-xstd = 10
+w1, w2 = 0.01, -0.01
+xstd = 100
 val_n = 100
 p_ord = 1
 iterations = 50
@@ -69,8 +70,9 @@ val_y = val_data[:, -1][:, None]
 def metropolis_hastings_algorithm_diagonal(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
     all_ws = np.zeros((num_iter, len(w_init), 1))
     num_features = len(w_init)
-    w_last = w_init
-    w_current = np.random.multivariate_normal(w_init.flat, w_cov_prior)
+    w_last = np.random.multivariate_normal(w_init.flat, w_cov_prior)[:, None]
+    w_current = w_last
+    all_ws[0] = w_last
     pbar = tqdm(range(num_iter - 1))
     for i in pbar:
         w_candidate = propose_new_sample(w_last, w_cov_prior)
@@ -88,8 +90,9 @@ def metropolis_hastings_algorithm_diagonal(X, t, w_init, w_cov_prior, sigma_sq=N
 def metropolis_hastings_algorithm_perpendicular(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
     all_ws = np.zeros((num_iter, len(w_init), 1))
     num_features = len(w_init)
-    w_last = w_init
-    w_current = np.random.multivariate_normal(w_init.flat, w_cov_prior)[:, None]
+    w_last = np.random.multivariate_normal(w_init.flat, w_cov_prior)[:, None]
+    w_current = w_last
+    all_ws[0] = w_last
     pbar = tqdm(range(num_iter - 1))
     for i in pbar:
         for j in range(num_features):
@@ -123,9 +126,9 @@ def accept_or_reject_sample(w_candidate, w_last, X, t, w_mu, w_cov):
     log_r_candidate = log_prior_candidate + log_likelihood_candidate
     log_r_last = log_prior_last + log_likelihood_last
     r = log_r_candidate - log_r_last
-    r = np.exp(r)
+    # r = np.exp(r)
 
-    r = np.log(r)
+    # r = np.log(r)
     thresh = np.log(thresh)
     inv_sampling_val = np.log(inv_sampling_val)
 
@@ -139,19 +142,19 @@ def accept_or_reject_sample(w_candidate, w_last, X, t, w_mu, w_cov):
             str_text = str_text + f'u={inv_sampling_val:4.4f} < r={r:.4f}'
         if not (inv_sampling_val < r):
             str_text = str_text + f'u={inv_sampling_val:4.4f} < r={r:.4f}'
-    print(f"{str_text}, {w_candidate.T}")
+    # print(f"{str_text}, {w_candidate.T}")
 
     return is_accepted
 
 
 def log_likelihood_function(w, X, t):
     probabilities = sigmoid(X @ w)
-    all_log_likelihoods = (t * np.log(probabilities)) + (1 - t) * np.log((1 - probabilities))
-    return np.nansum(all_log_likelihoods)
+    ones = np.log(probabilities + STABILITY_CONSTANT)
+    zeros = np.log((1 - probabilities) + 0.00000000001)
+    all_log_likelihoods = t * ones + (1 - t) * zeros
+    return np.sum(all_log_likelihoods)
 
 
-def sigmoid(x):
-    return (1 / (1 + np.exp(-x)))
 
 
 def compute_metrics(w, X, y):
@@ -183,7 +186,7 @@ all_val_accs = []
 assumed_sigma_sq = 1
 w_mu_prior = np.ones((train_X.shape[1], 1))
 w_cov_prior = np.eye(train_X.shape[1]) * assumed_sigma_sq
-num_iter = 100
+num_iter = 1000
 # print("====================")
 
 w_hat, all_w_hats = metropolis_hastings_algorithm_diagonal(train_X,

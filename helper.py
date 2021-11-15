@@ -1,7 +1,9 @@
 import numpy as np
+from scipy import special
 
 
-
+def sigmoid(x):
+    return special.expit(x)
 
 def add_bias_vector(X):
     return np.hstack([np.ones(X.shape[0]).reshape(-1, 1), X])

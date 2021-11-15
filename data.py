@@ -4,6 +4,10 @@ import numpy as np
 import pandas as pd
 import scipy
 import random as r
+
+from scipy import special
+
+from helper import sigmoid
 # https://github.com/jkclem/MCMC-Log-Reg/blob/master/MCMC%20Logistic%20Regression.ipynb
 # %%
 np.random.seed(42)
@@ -41,7 +45,8 @@ def true_function_linear(x, p1=1):
 
 
 def true_function_sigmoid(x, y, w1, w2):
-    return 1 / (1 + np.exp(-(w1 * x + w2 * y)))
+    x = (w1 * x + w2 * y)
+    return sigmoid(x)
 
 
 def observed_data(d: int = 10, p1=2, p2=3):

@@ -13,7 +13,7 @@ from data import observed_data, observed_data_binary, observed_data_linear, true
 from helper import add_bias_vector, create_polinomial_bases
 from tqdm import tqdm, tqdm_notebook
 
-from logistic_regression_newton_rhapson import first_derivation, newton_method, second_derivation
+from logistic_regression_newton_rhapson import first_derivation, newton_method_slow, second_derivation
 
 # %%
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
@@ -126,7 +126,7 @@ posterior, w_hat, w_cov_hat = laplace_approximation(
     assumed_sigma_sq,
     first_derivation,
     second_derivation,
-    newton_method,
+    newton_method_slow,
 )
 
 

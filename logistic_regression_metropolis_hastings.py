@@ -54,8 +54,8 @@ val_y = val_data[:, -1][:, None]
 
 
 def metropolis_hastings_algorithm_diagonal(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
-    all_ws = np.zeros((num_iter + 1, len(w_init), 1))
     num_features = len(w_init)
+    all_ws = np.zeros((num_iter + 1, num_features, 1))
     w_last = np.random.multivariate_normal(w_init.flat, w_cov_prior)[:, None]
     w_current = w_last
     all_ws[0] = w_last
@@ -72,8 +72,8 @@ def metropolis_hastings_algorithm_diagonal(X, t, w_init, w_cov_prior, sigma_sq=N
 
 
 def metropolis_hastings_algorithm_orthogonal(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
-    all_ws = np.zeros((num_iter + 1, len(w_init), 1))
     num_features = len(w_init)
+    all_ws = np.zeros((num_iter + 1, num_features, 1))
     w_last = np.random.multivariate_normal(w_init.flat, w_cov_prior)[:, None]
     w_current = w_last
     all_ws[0] = w_last
@@ -145,11 +145,11 @@ def log_likelihood_function(w, X, t):
 
 
 def compute_metrics(w, X, y):
-    train_preds = sigmoid(X @ w)
-    train_losses = y - train_preds
-    m_train_loss = np.mean(np.abs(train_losses))
-    m_train_acc = np.mean(y == ((train_preds >= 0.5) * 1.0))
-    return m_train_loss, m_train_acc
+    y_hat = sigmoid(X @ w)
+    losses = y - y_hat
+    m_loss = np.mean(np.abs(losses))
+    m_acc = np.mean(y == ((y_hat >= 0.5) * 1.0))
+    return m_loss, m_acc
 
 
 def select_matrix_cross(index, square_matrix):

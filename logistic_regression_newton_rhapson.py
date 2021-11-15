@@ -50,25 +50,18 @@ val_y = val_data[:, -1][:, None]
 #   - Is hard to compute due to the normalizing constant
 #   - We can optimize the numerator instead g(w; X, t, σ²) = p(t|X; w) * p(w|σ²)
 #   - Best is to optimize the log g(w; X, t, σ²) = p(t|X; w) + p(w|σ²)
-#       -
+#
+# Newston Method
+#   - Stopping Criterion # http://www-solar.mcs.st-and.ac.uk/~alan/MT2003/Numerical/node7.html
+#   - Using any iterative scheme on a computer to estimate roots of an equation requires some condition to be satisfied so that the algorithm `knows'when to stop. There are various possibilities and these are listed below.
+#   - $\vert x_{n+1} - x_{n}\vert$ sufficiently small. If the absolute value of two succesive rounded iterates agree to the same number of decimal places then $x_{n+1}$, the last estimate, is correct to that number of decimal places. Always take the last estimate as it is almost always more accurate. This raises an important point. Always keep two more decimal places in your calculations than the final answer needs. Thus, if the final result must be correct to 4 decimal places, then you should keep 6 decimal places in your workings.
+#   - $\vert F(x_{n})\vert$ sufficiently small in some sense for some $x_{n}$. We are looking for the value of $x$ that makes $F(x) = 0$ so when $F(x)$ is sufficiently small we must be close to the root.
+#   - A certain number of iterations have been performed. Stopping after, say 10 iterations, prevents the situation where the method has failed to converge and is aimlessly looping. This is not a problem when you use the method by hand as you will soon see if something has gone wrong but can cause problems when the method is implemented on a computer.
+#   - Stop if $F^{\prime}(x_{n}) = 0$. This is extremely unlikely but if it does happen then computers do not like dividing by zero. It means the method has located a turning point of the function.
 
 
-def newton_method(
-    X,
-    t,
-    w_init,
-    sigma_sq,
-    num_iter,
-    first_derivation,
-    second_derivation,
-):
+def newton_method(X, t, w_init, sigma_sq, num_iter, first_derivation, second_derivation):
 
-    # Stopping Criterion # http://www-solar.mcs.st-and.ac.uk/~alan/MT2003/Numerical/node7.html
-    # Using any iterative scheme on a computer to estimate roots of an equation requires some condition to be satisfied so that the algorithm `knows'when to stop. There are various possibilities and these are listed below.
-    # $\vert x_{n+1} - x_{n}\vert$ sufficiently small. If the absolute value of two succesive rounded iterates agree to the same number of decimal places then $x_{n+1}$, the last estimate, is correct to that number of decimal places. Always take the last estimate as it is almost always more accurate. This raises an important point. Always keep two more decimal places in your calculations than the final answer needs. Thus, if the final result must be correct to 4 decimal places, then you should keep 6 decimal places in your workings.
-    # $\vert F(x_{n})\vert$ sufficiently small in some sense for some $x_{n}$. We are looking for the value of $x$ that makes $F(x) = 0$ so when $F(x)$ is sufficiently small we must be close to the root.
-    # A certain number of iterations have been performed. Stopping after, say 10 iterations, prevents the situation where the method has failed to converge and is aimlessly looping. This is not a problem when you use the method by hand as you will soon see if something has gone wrong but can cause problems when the method is implemented on a computer.
-    # Stop if $F^{\prime}(x_{n}) = 0$. This is extremely unlikely but if it does happen then computers do not like dividing by zero. It means the method has located a turning point of the function.
     num_features = X.shape[1]
     indices = np.random.randint(0, len(X), size=num_iter)
     all_ws = np.zeros((num_iter + 1, num_features, 1))
@@ -81,9 +74,10 @@ def newton_method(
     pbar = tqdm(range(1, num_iter))
     for i in pbar:
         selected_datapoint = indices[i - 1]
-        x = X[selected_datapoint, :][:, None]
-        gradient = first_derivation(w, x.T, t, sigma_sq)
-        hessian = second_derivation(w, x, t, sigma_sq)
+        x_n = X[selected_datapoint, :][None, :]
+        t_n = t[selected_datapoint, :]
+        gradient = first_derivation(w, x_n, t_n, sigma_sq)
+        hessian = second_derivation(w, x_n, t_n, sigma_sq)
         weight_change = (np.linalg.inv(hessian) @ gradient)  # / (len(X) if use_mean else 1)
         w = w - weight_change
         all_ws[i] = w
@@ -119,9 +113,11 @@ def first_derivation(w, X, t, sigma_sq):
 
 def second_derivation(w, x, t, sigma_sq):
     # According to Book by Rogers and Girolami
+    x = x.T
     block1 = (-1 / sigma_sq) * np.eye(len(w))
     block2 = x @ x.T
-    block3 = (sigmoid(x.T @ w) * (1 - sigmoid(x.T @ w)))
+    P_n = sigmoid(x.T @ w)
+    block3 = (P_n * (1 - P_n))
     return block1 - block2 * block3
 
 
@@ -134,7 +130,7 @@ def compute_metrics(w, X, y):
 
 
 w_start = np.random.uniform(10, 11, size=(train_X.shape[1], 1))
-assumed_sigma_sq = 1 / 10000000
+assumed_sigma_sq = 1 / 100
 
 all_train_losses = []
 all_val_losses = []
@@ -181,11 +177,14 @@ print(f"Final weights: ", all_ws_hats[-1])
 
 ## %%
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
+burn_in_period = 20
+all_ws_hats = np.hstack(all_ws_hats).T[::1]
 
 
-def plot_w_path(all_w_hats, ax, w_cov, w_mu, title="", precision=2):
-    x_min, y_min = all_w_hats.min(axis=0)
-    x_max, y_max = all_w_hats.max(axis=0)
+def plot_w_path(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", precision=2):
+    all_w_hats_to_use = all_w_hats[burn_in_period:]
+    x_min, y_min = all_w_hats_to_use.min(axis=0)
+    x_max, y_max = all_w_hats_to_use.max(axis=0)
     x_cov = precision * np.sqrt(w_cov[0, 0])
     y_cov = precision * np.sqrt(w_cov[1, 1])
     x_mu = w_mu[0]
@@ -199,10 +198,10 @@ def plot_w_path(all_w_hats, ax, w_cov, w_mu, title="", precision=2):
 
     CS = ax.contour(X, Y, Z_True)
     ax.clabel(CS, inline=True, fontsize=10)
-    ax.plot(all_w_hats[:, -2], all_w_hats[:, -1])
-    ax.scatter(all_w_hats[:, -2], all_w_hats[:, -1], s=10, c="blue", label="step")
-    ax.scatter(all_w_hats[0][-2], all_w_hats[0][-1], s=100, c='green', label="start")
-    ax.scatter(all_w_hats[-1][-2], all_w_hats[-1][-1], s=100, c='red', label="end")
+    ax.plot(all_w_hats_to_use[:, -2], all_w_hats_to_use[:, -1])
+    ax.scatter(all_w_hats_to_use[:, -2], all_w_hats_to_use[:, -1], s=10, c="blue", label="step")
+    ax.scatter(all_w_hats_to_use[0][-2], all_w_hats_to_use[0][-1], s=100, c='green', label="start")
+    ax.scatter(all_w_hats_to_use[-1][-2], all_w_hats_to_use[-1][-1], s=100, c='red', label="end")
     ax.set_xlabel("w1")
     ax.set_ylabel("w2")
     ax.set_xlim(x_lims[0], x_lims[1])
@@ -211,8 +210,9 @@ def plot_w_path(all_w_hats, ax, w_cov, w_mu, title="", precision=2):
     ax.legend()
 
 
-plot_w_path(np.hstack(all_ws_hats).T[::1], ax, w_cov, w_mu, title="Diagonal", precision=2)
-
+plot_w_path(all_ws_hats, ax, w_cov, w_mu, burn_in_period, title="Diagonal", precision=2)
+where_it_is_to_much = np.where(np.abs(all_ws_hats).sum(axis=1) > 100)
+print(f"Where the vals are too high: {where_it_is_to_much}")
 # X = np.linspace(w1 - contour_width, w1 + contour_width, 100)
 # Y = np.linspace(w2 - contour_width, w2 + contour_width, 100)
 # X, Y = np.meshgrid(X, Y)

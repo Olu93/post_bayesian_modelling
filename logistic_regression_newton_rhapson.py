@@ -16,7 +16,7 @@ from tqdm.notebook import tqdm
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 IS_EXACT_FORMULA = True
 # %%
-n = 10000
+n = 1000
 w1_mu, w2_mu = 1, -3
 w_cov = np.array([[1, -0.5], [-0.5, 1]])
 w_mu = np.array([w1_mu, w2_mu])
@@ -75,7 +75,8 @@ def newton_method(X, t, w_init, sigma_sq, num_iter, first_derivation, second_der
     for i in pbar:
         gradient = first_derivation(w, X, t, sigma_sq)
         hessian = second_derivation(w, X, t, sigma_sq)
-        weight_change = (np.linalg.inv(hessian) @ gradient)  # / (len(X) if use_mean else 1)
+        inv_hessian = np.linalg.inv(hessian)
+        weight_change = (inv_hessian @ gradient)  # / (len(X) if use_mean else 1)
         w = w - weight_change
         all_ws[i] = w
         all_deltas[i] = weight_change
@@ -83,6 +84,7 @@ def newton_method(X, t, w_init, sigma_sq, num_iter, first_derivation, second_der
         all_hessians[i] = hessian
         m_train_loss, m_train_acc = compute_metrics(w, X, t)
         pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
+
 
     return all_ws, all_deltas, all_gradients, all_hessians
 
@@ -104,14 +106,16 @@ def second_derivation(w, X, t, sigma_sq):
     block3 = (sigmoid(X @ w) * (1 - sigmoid(X @ w)))[:, :, None]
     # return block1 - np.sum(block2 * block3, axis=0)
     # Andrew Ng Logistic Regression with Newton-Rhapson https://www.youtube.com/watch?v=fF-6QnVB-7E
-    H = np.sum(block2 * block3, axis=0)
-    return (-1 / sigma_sq) * np.eye(len(w)) * len(X) - H
+    all_covs = block2 * block3
+    all_regs = np.repeat([(-1 / sigma_sq) * np.eye(len(w))], len(X), axis=0) 
+    H = np.sum(all_regs - all_covs, axis=0)
+    return H
 
 
 def second_derivation_slow(w, X, t, sigma_sq):
     # According to Book by Rogers and Girolami
     num_features = len(w)
-    cov_result = np.zeros((num_features, num_features))
+    H = np.zeros((num_features, num_features))
     for i in range(len(X)):
         x = X[i][None, :]
         xT = x.T
@@ -119,9 +123,9 @@ def second_derivation_slow(w, X, t, sigma_sq):
         block2 = xT @ xT.T
         P_n = sigmoid(x @ w)
         block3 = (P_n * (1 - P_n))
-        cov_result += block1 - block2 * block3
+        H += block1 - block2 * block3
 
-    return cov_result
+    return H
 
 
 def compute_metrics(w, X, y):
@@ -132,7 +136,7 @@ def compute_metrics(w, X, y):
     return m_loss, m_acc
 
 
-w_start = np.random.uniform(10, 11, size=(train_X.shape[1], 1))
+w_start = np.random.normal(2, 2, size=(train_X.shape[1], 1))
 assumed_sigma_sq = 1 / 100
 
 all_train_losses = []
@@ -145,7 +149,7 @@ all_ws_hats, all_deltas, all_gradients, all_hessians = newton_method(
     train_y,
     w_start,
     assumed_sigma_sq,
-    20,
+    100,
     first_derivation,
     second_derivation,
 )
@@ -164,7 +168,7 @@ print(f"Final weights: ", all_ws_hats[-1].T)
 ## %%
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
 burn_in_period = 0
-all_ws_hats = np.hstack(all_ws_hats).T[::1]
+# all_ws_hats = np.hstack(all_ws_hats).T[::1]
 
 
 def plot_w_path(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", precision=2):
@@ -197,8 +201,6 @@ def plot_w_path(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", precision
 
 
 plot_w_path(all_ws_hats, ax, w_cov, w_mu, burn_in_period, title="Diagonal", precision=2)
-where_it_is_to_much = np.where(np.abs(all_ws_hats).sum(axis=1) > 100)
-# print(f"Where the vals are too high: {where_it_is_to_much.T}")
 
 # %%
 fig, ax = plt.subplots(1, 1, figsize=(10, 10))

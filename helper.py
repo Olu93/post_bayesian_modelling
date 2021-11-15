@@ -2,6 +2,11 @@ import numpy as np
 from scipy import special
 
 
+STABILITY_CONSTANT = 0.00000000001
+
+def log_stable(x):
+    return np.log(x+STABILITY_CONSTANT)
+
 def sigmoid(x):
     return special.expit(x)
 

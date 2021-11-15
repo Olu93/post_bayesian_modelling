@@ -10,15 +10,20 @@ from scipy import stats
 from matplotlib import cm
 import random as r
 from data import observed_data, observed_data_binary, observed_data_linear, true_function_polynomial
-from helper import add_bias_vector, create_polinomial_bases
-from tqdm import tqdm
+from helper import add_bias_vector, create_polinomial_bases, sigmoid
+from tqdm.notebook import tqdm
 # %%
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 IS_EXACT_FORMULA = True
 # %%
 n = 10000
-w1, w2 = -0.4, 0.2
-xstd = 1
+w1_mu, w2_mu = 1, -3
+w_cov = np.array([[1, -0.5], [-0.5, 1]])
+w_mu = np.array([w1_mu, w2_mu])
+w_distribution = stats.multivariate_normal(w_mu, w_cov)
+true_w_sample = w_distribution.rvs()
+w1, w2 = true_w_sample[0], true_w_sample[1]
+xstd = 1000
 val_n = 100
 p_ord = 1
 iterations = 1000
@@ -69,18 +74,14 @@ def newton_method_vectorised(
     # A certain number of iterations have been performed. Stopping after, say 10 iterations, prevents the situation where the method has failed to converge and is aimlessly looping. This is not a problem when you use the method by hand as you will soon see if something has gone wrong but can cause problems when the method is implemented on a computer.
     # Stop if $F^{\prime}(x_{n}) = 0$. This is extremely unlikely but if it does happen then computers do not like dividing by zero. It means the method has located a turning point of the function.
     gradient = first_derivation(w, X, t, sigma_sq)
-    hessian = second_derivation(gradient, X, t, sigma_sq)
-    weight_change = (np.linalg.inv(hessian) @ gradient) # / (len(X) if use_mean else 1)
-    w_new = w - weight_change/10
+    hessian = second_derivation(w, X, t, sigma_sq)
+    weight_change = (np.linalg.inv(hessian) @ gradient)  # / (len(X) if use_mean else 1)
+    w_new = w - weight_change 
     return w_new, weight_change, gradient, hessian
 
 
 def is_neg_def(x):
     return np.all(np.linalg.eigvals(x) < 0)
-
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
 
 
 def first_derivation(w, X, t, sigma_sq):
@@ -92,31 +93,37 @@ def first_derivation(w, X, t, sigma_sq):
 def second_derivation(w, X, t, sigma_sq):
     # block1 = (-1 / sigma_sq) * np.eye(len(w))
     # block2 = np.sum(X * X, axis=1)
-    block2 = np.matmul(X[:,:,None], X[:,None,:])
-    block3 =(sigmoid(X @ w) * (1 - sigmoid(X @ w)))[:,:,None]
+    block2 = np.matmul(X[:, :, None], X[:, None, :])
+    block3 = (sigmoid(X @ w) * (1 - sigmoid(X @ w)))[:, :, None]
     # return block1 - np.sum(block2 * block3, axis=0)
     # Andrew Ng Logistic Regression with Newton-Rhapson https://www.youtube.com/watch?v=fF-6QnVB-7E
     H = np.mean(block2 * block3, axis=0)
     return (-1 / sigma_sq) * np.eye(len(w)) - H
 
 
-w = np.random.normal(2, 5, size=(train_X.shape[1], 1))*2
-# w = np.zeros(shape=(train_X.shape[1], 1))
-# w = np.array([[1], [-3], [3]])
-# w = np.random.multivariate_normal([w1,w2], np.eye(train_X.shape[1]))[:, None]
-# w = np.random.multivariate_normal([1, w1, w2], np.eye(train_X.shape[1]))[:, None]
+def compute_metrics(train_X, train_y, val_X, val_y, w):
+    train_preds = train_X @ w
+    val_preds = val_X @ w
+    train_losses = train_y - train_preds
+    val_losses = val_y - val_preds
+    m_train_loss = np.mean(np.abs(train_losses))
+    m_val_loss = np.mean(np.abs(val_losses))
+    m_train_acc = np.mean(train_y == (train_preds > 0.5) * 1.0)
+    m_val_acc = np.mean(val_y == ((val_preds > 0.5) * 1.0))
+    return m_train_acc, m_val_acc, m_train_loss, m_val_loss
+
+
+w = np.random.normal(2, 2, size=(train_X.shape[1], 1))
 
 all_ws = [w]
 all_deltas = []
 all_train_losses = []
 all_val_losses = []
-assumed_sigma_sq = 1 / 1000
-train_preds = train_X @ w
-val_preds = val_X @ w
-m_train_acc = np.mean(train_y == (train_preds>0.5)*1.0)
-m_val_acc = np.mean(val_y == ((val_preds>0.5)*1.0))
+assumed_sigma_sq = 1 / 1
+m_train_acc, m_val_acc, m_train_loss, m_val_loss = compute_metrics(train_X, train_y, val_X, val_y, w)
 all_train_losses.append(m_train_acc)
 all_val_losses.append(m_val_acc)
+
 with tqdm(range(iterations)) as pbar:
     for i in pbar:
         # print("====================")
@@ -127,51 +134,70 @@ with tqdm(range(iterations)) as pbar:
             assumed_sigma_sq,
             first_derivation,
             second_derivation,
-            # not IS_EXACT_FORMULA,
         )
         all_ws.append(w)
         all_deltas.append(w_delta)
-        train_preds = train_X @ w
-        val_preds = val_X @ w
-        train_losses = train_y - train_preds
-        val_losses = val_y - val_preds
-        m_train_loss = np.mean(np.abs(train_losses))
-        m_val_loss = np.mean(np.abs(val_losses))
-        m_train_acc = np.mean(train_y == (train_preds>0.5)*1.0)
-        m_val_acc = np.mean(val_y == ((val_preds>0.5)*1.0))
+        m_train_acc, m_val_acc, m_train_loss, m_val_loss = compute_metrics(train_X, train_y, val_X, val_y, w)
         all_train_losses.append(m_train_acc)
         all_val_losses.append(m_val_acc)
         pbar.set_description_str(f"Train: {m_train_acc:.4f} | Val: {m_val_acc:.4f}")
 print(f"Final weights: ", w.T)
 
 ## %%
-fig, ax = plt.subplots(1, 1, figsize=(15, 15), subplot_kw={"projection": "3d"})
-w_cov = np.array([[1, 0], [0, 1]])
-w_mu = np.array([w1, w2])
-contour_width = 1
+fig, ax = plt.subplots(1, 1, figsize=(15, 15))
 
-X = np.linspace(w1 - contour_width, w1 + contour_width, 100)
-Y = np.linspace(w2 - contour_width, w2 + contour_width, 100)
-X, Y = np.meshgrid(X, Y)
-distribution = stats.multivariate_normal(w_mu, w_cov)
-Z = distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
 
-CS = ax.contour(X, Y, Z)
-ax.clabel(CS, inline=True, fontsize=10)
+def plot_w_path(all_w_hats, ax, w_cov, w_mu, title="", precision=2):
+    x_min, y_min = all_w_hats.min(axis=0)
+    x_max, y_max = all_w_hats.max(axis=0)
+    x_cov = precision * np.sqrt(w_cov[0, 0])
+    y_cov = precision * np.sqrt(w_cov[1, 1])
+    x_mu = w_mu[0]
+    y_mu = w_mu[1]
+    x_lims = np.min([x_min, x_mu - x_cov]), np.max([x_max, x_mu + x_cov])
+    y_lims = np.min([y_min, y_mu - y_cov]), np.max([y_max, y_mu + y_cov])
+    X = np.linspace(x_lims[0], x_lims[1], 100)
+    Y = np.linspace(y_lims[0], y_lims[1], 100)
+    X, Y = np.meshgrid(X, Y)
+    Z_True = stats.multivariate_normal(w_mu, w_cov).pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
 
-ws = np.hstack(all_ws).T[::1]
-w1s, w2s = ws[:, -2], ws[:, -1]
-zws = distribution.pdf(ws[:, [-2, -1]])
-ax.plot(w1s, w2s, distribution.pdf(ws[:, [-2, -1]]))
-ax.scatter(w1s[0], w2s[0], zws[0], s=100, c='green', label="start")
-ax.scatter(w1s[-1], w2s[-1], zws[-1], s=100, c='red', label="end")
-# ax.plot(w0s, w1s, w2s, linestyle='dashed')
-ax.set_xlabel("w1")
-ax.set_ylabel("w2")
-# ax.view_init(0, 15)
-ax.legend()
-ax.set_title("Weight movement")
-plt.show()
+    CS = ax.contour(X, Y, Z_True)
+    ax.clabel(CS, inline=True, fontsize=10)
+    ax.plot(all_w_hats[:, -2], all_w_hats[:, -1])
+    ax.scatter(all_w_hats[:, -2], all_w_hats[:, -1], s=10, c="blue", label="step")
+    ax.scatter(all_w_hats[0][-2], all_w_hats[0][-1], s=100, c='green', label="start")
+    ax.scatter(all_w_hats[-1][-2], all_w_hats[-1][-1], s=100, c='red', label="end")
+    ax.set_xlabel("w1")
+    ax.set_ylabel("w2")
+    ax.set_xlim(x_lims[0], x_lims[1])
+    ax.set_ylim(y_lims[0], y_lims[1])
+    ax.set_title(f"Weight Movement: {title}")
+    ax.legend()
+
+
+plot_w_path(np.hstack(all_ws).T[::1], ax, w_cov, w_mu, title="Diagonal", precision=2)
+
+# X = np.linspace(w1 - contour_width, w1 + contour_width, 100)
+# Y = np.linspace(w2 - contour_width, w2 + contour_width, 100)
+# X, Y = np.meshgrid(X, Y)
+# distribution = stats.multivariate_normal(w_mu, w_cov)
+# Z = distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
+
+# CS = ax.contour(X, Y, Z)
+# ax.clabel(CS, inline=True, fontsize=10)
+
+# ws = np.hstack(all_ws).T[::1]
+# w1s, w2s = ws[:, -2], ws[:, -1]
+# zws = distribution.pdf(ws[:, [-2, -1]])
+# ax.plot(w1s, w2s)
+# ax.scatter(w1s[0], w2s[0], s=100, c='green', label="start")
+# ax.scatter(w1s[-1], w2s[-1], s=100, c='red', label="end")
+# ax.set_xlabel("w1")
+# ax.set_ylabel("w2")
+# # ax.view_init(0, 15)
+# ax.legend()
+# ax.set_title("Weight movement")
+# plt.show()
 
 # %%
 fig, ax = plt.subplots(1, 1, figsize=(10, 10))

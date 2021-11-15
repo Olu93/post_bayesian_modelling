@@ -17,11 +17,11 @@ from tqdm.notebook import tqdm
 # %%
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 IS_EXACT_FORMULA = True
-np.random.seed(42)
+# np.random.seed(42)
 # %%
 
-n = 1000
-w1, w2 = 3, -3
+n = 10000
+w1, w2 = 1, -3
 xstd = 1000
 val_n = 100
 p_ord = 1
@@ -30,9 +30,9 @@ smooth = 1
 noise = 0
 data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, noise)).T)
 val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, noise)).T)
-display(data.max(axis=0))
-display(data.min(axis=0))
-display(data.mean(axis=0))
+# display(data.max(axis=0))
+# display(data.min(axis=0))
+# display(data.mean(axis=0))
 
 train_X = data[:, :-1]
 # train_X = add_bias_vector(create_polinomial_bases(data[:, :-1], p_ord))
@@ -60,16 +60,14 @@ def metropolis_hastings_algorithm_diagonal(X, t, w_init, w_cov_prior, sigma_sq=N
         w_candidate = propose_new_sample(w_last, w_cov_prior)
         is_accepted = accept_or_reject_sample(w_candidate, w_current, X, t, w_init, w_cov_prior)
         w_selected = w_candidate if is_accepted else w_current
-        all_ws[i] = np.copy(w_selected)
-        w_last = all_ws[i - 1]
-        w_current = w_selected
+        w_current, w_selected, w_last = update_w_params(i, all_ws, w_current, w_selected)
         m_train_loss, m_train_acc = compute_metrics(w_current, train_X, train_y)
         pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
     return w_current, all_ws.reshape(num_iter + 1, -1)
 
 
-def metropolis_hastings_algorithm_perpendicular(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
+def metropolis_hastings_algorithm_orthogonal(X, t, w_init, w_cov_prior, sigma_sq=None, num_iter=1000):
     all_ws = np.zeros((num_iter + 1, len(w_init), 1))
     num_features = len(w_init)
     w_last = np.random.multivariate_normal(w_init.flat, w_cov_prior)[:, None]
@@ -83,13 +81,18 @@ def metropolis_hastings_algorithm_perpendicular(X, t, w_init, w_cov_prior, sigma
             w_candidate = propose_new_sample(w_last, dim_manipulation_cov_prior)
             is_accepted = accept_or_reject_sample(w_candidate, w_current, X, t, w_init, w_cov_prior)
             w_selected = w_candidate if is_accepted else w_current
-            all_ws[i] = np.copy(w_selected)
-            w_current = all_ws[i]
-            w_last = all_ws[i-1]
+            w_current, w_selected, w_last = update_w_params(i, all_ws, w_current, w_selected)
             m_train_loss, m_train_acc = compute_metrics(w_current, train_X, train_y)
             pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
     return w_selected, all_ws.reshape(num_iter + 1, -1)
+
+
+def update_w_params(i, all_ws, w_current, w_selected):
+    w_current = w_selected
+    all_ws[i] = w_selected
+    w_last = all_ws[i - 1]
+    return w_current, w_selected, w_last
 
 
 # p(w_candidate|w_last_accepted, Σ) = N(w_last_accepted; Σ)
@@ -175,20 +178,20 @@ w_cov_prior = np.eye(train_X.shape[1]) * assumed_sigma_sq
 num_iter = 1000
 # print("====================")
 
-w_hat, all_w_hats = metropolis_hastings_algorithm_perpendicular(train_X,
-                                                                train_y,
-                                                                w_mu_prior,
-                                                                w_cov_prior,
-                                                                assumed_sigma_sq,
-                                                                num_iter=num_iter)
+w_hat, all_w_hats = metropolis_hastings_algorithm_orthogonal(train_X,
+                                                           train_y,
+                                                           w_mu_prior,
+                                                           w_cov_prior,
+                                                           assumed_sigma_sq,
+                                                           num_iter=num_iter)
 print("Expected Mean W", all_w_hats[num_iter // 10:].mean(axis=0))
 
 ## %%
 fig, (ax1) = plt.subplots(1, 1, figsize=(15, 15))
-burnin_period = num_iter // 1
-
 w_cov = np.array([[1, 0], [0, 1]])
 w_mu = np.array([w1, w2])
+burn_in_period = num_iter // 1
+
 
 X = np.linspace(w_mu[0] - w_cov[0, 0], w_mu[0] + w_cov[0, 0], 100)
 Y = np.linspace(w_mu[1] - w_cov[1, 1], w_mu[1] + w_cov[1, 1], 100)
@@ -198,18 +201,17 @@ Z_True = distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shap
 
 CS = ax1.contour(X, Y, Z_True)
 # ax1.clabel(CS, inline=True, fontsize=10)
-ax1.plot(all_w_hats[:burnin_period, -2], all_w_hats[:burnin_period, -1])
+ax1.plot(all_w_hats[:burn_in_period, -2], all_w_hats[:burn_in_period, -1])
 ax1.scatter(all_w_hats[0][-2], all_w_hats[0][-1], s=100, c='green', label="start")
-ax1.scatter(all_w_hats[burnin_period - 1][-2], all_w_hats[burnin_period - 1][-1], s=100, c='red', label="end")
+ax1.scatter(all_w_hats[burn_in_period - 1][-2], all_w_hats[burn_in_period - 1][-1], s=100, c='red', label="end")
 ax1.set_xlabel("w1")
 ax1.set_ylabel("w2")
-# ax1.legend()
 ax1.set_title("True Distribution")
 
 # %%
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 15))
-burnin_period = num_iter // 10
+burn_in_period = num_iter // 10
 
 w_cov = np.array([[1, 0], [0, 1]])
 w_mu = np.array([w1, w2])
@@ -222,7 +224,7 @@ Z_True = distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shap
 
 CS = ax1.contour(X, Y, Z_True)
 # ax1.clabel(CS, inline=True, fontsize=10)
-ax1.scatter(all_w_hats[burnin_period:, -1], all_w_hats[burnin_period:, -2])
+ax1.scatter(all_w_hats[burn_in_period:, -1], all_w_hats[burn_in_period:, -2])
 ax1.set_xlabel("w1")
 ax1.set_ylabel("w2")
 # ax1.legend()
@@ -239,7 +241,7 @@ Z_Pred = pred_distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X
 
 CS = ax2.contour(X, Y, Z_Pred)
 # CS = ax1.contour(X, Y, Z_Pred)
-ax2.scatter(all_w_hats[burnin_period:, -1], all_w_hats[burnin_period:, -2])
+ax2.scatter(all_w_hats[burn_in_period:, -1], all_w_hats[burn_in_period:, -2])
 ax2.set_xlabel("w1")
 ax2.set_ylabel("w2")
 # ax2.legend()

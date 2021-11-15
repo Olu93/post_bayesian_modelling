@@ -1,0 +1,4 @@
+w_selected = w_candidate if is_accepted else w_current
+all_ws[i] = np.copy(w_selected)
+w_last = all_ws[i - 1]
+w_current = w_selecte

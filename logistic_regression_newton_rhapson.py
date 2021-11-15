@@ -53,16 +53,12 @@ val_y = val_data[:, -1][:, None]
 #       -
 
 
-def newton_method(x, first_derivation, second_derivation):
-    x_opt = x - (first_derivation(x) / second_derivation(x))
-    return x_opt
-
-
-def newton_method_vectorised(
-    w,
+def newton_method(
     X,
     t,
+    w_init,
     sigma_sq,
+    num_iter,
     first_derivation,
     second_derivation,
 ):
@@ -73,11 +69,31 @@ def newton_method_vectorised(
     # $\vert F(x_{n})\vert$ sufficiently small in some sense for some $x_{n}$. We are looking for the value of $x$ that makes $F(x) = 0$ so when $F(x)$ is sufficiently small we must be close to the root.
     # A certain number of iterations have been performed. Stopping after, say 10 iterations, prevents the situation where the method has failed to converge and is aimlessly looping. This is not a problem when you use the method by hand as you will soon see if something has gone wrong but can cause problems when the method is implemented on a computer.
     # Stop if $F^{\prime}(x_{n}) = 0$. This is extremely unlikely but if it does happen then computers do not like dividing by zero. It means the method has located a turning point of the function.
-    gradient = first_derivation(w, X, t, sigma_sq)
-    hessian = second_derivation(w, X, t, sigma_sq)
-    weight_change = (np.linalg.inv(hessian) @ gradient)  # / (len(X) if use_mean else 1)
-    w_new = w - weight_change 
-    return w_new, weight_change, gradient, hessian
+    num_features = X.shape[1]
+    indices = np.random.randint(0, len(X), size=num_iter)
+    all_ws = np.zeros((num_iter + 1, num_features, 1))
+    all_deltas = np.zeros((num_iter + 1, num_features, 1))
+    all_gradients = np.zeros((num_iter + 1, num_features, 1))
+    all_hessians = np.zeros((num_iter + 1, num_features, num_features))
+    w = w_init
+    all_ws[0] = w_init
+
+    pbar = tqdm(range(1, num_iter))
+    for i in pbar:
+        selected_datapoint = indices[i - 1]
+        x = X[selected_datapoint, :][:, None]
+        gradient = first_derivation(w, x.T, t, sigma_sq)
+        hessian = second_derivation(w, x, t, sigma_sq)
+        weight_change = (np.linalg.inv(hessian) @ gradient)  # / (len(X) if use_mean else 1)
+        w = w - weight_change
+        all_ws[i] = w
+        all_deltas[i] = weight_change
+        all_gradients[i] = gradient
+        all_hessians[i] = hessian
+        m_train_acc, m_train_loss = compute_metrics(w, X, t)
+        pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
+
+    return all_ws, all_deltas, all_gradients, all_hessians
 
 
 def is_neg_def(x):
@@ -90,58 +106,78 @@ def first_derivation(w, X, t, sigma_sq):
     return result
 
 
-def second_derivation(w, X, t, sigma_sq):
-    # block1 = (-1 / sigma_sq) * np.eye(len(w))
-    # block2 = np.sum(X * X, axis=1)
-    block2 = np.matmul(X[:, :, None], X[:, None, :])
-    block3 = (sigmoid(X @ w) * (1 - sigmoid(X @ w)))[:, :, None]
-    # return block1 - np.sum(block2 * block3, axis=0)
-    # Andrew Ng Logistic Regression with Newton-Rhapson https://www.youtube.com/watch?v=fF-6QnVB-7E
-    H = np.mean(block2 * block3, axis=0)
-    return (-1 / sigma_sq) * np.eye(len(w)) - H
+# def second_derivation(w, X, t, sigma_sq):
+#     # block1 = (-1 / sigma_sq) * np.eye(len(w))
+#     # block2 = np.sum(X * X, axis=1)
+#     block2 = np.matmul(X[:, :, None], X[:, None, :])
+#     block3 = (sigmoid(X @ w) * (1 - sigmoid(X @ w)))[:, :, None]
+#     # return block1 - np.sum(block2 * block3, axis=0)
+#     # Andrew Ng Logistic Regression with Newton-Rhapson https://www.youtube.com/watch?v=fF-6QnVB-7E
+#     H = np.mean(block2 * block3, axis=0)
+#     return (-1 / sigma_sq) * np.eye(len(w)) - H
 
 
-def compute_metrics(train_X, train_y, val_X, val_y, w):
-    train_preds = train_X @ w
-    val_preds = val_X @ w
-    train_losses = train_y - train_preds
-    val_losses = val_y - val_preds
-    m_train_loss = np.mean(np.abs(train_losses))
-    m_val_loss = np.mean(np.abs(val_losses))
-    m_train_acc = np.mean(train_y == (train_preds > 0.5) * 1.0)
-    m_val_acc = np.mean(val_y == ((val_preds > 0.5) * 1.0))
-    return m_train_acc, m_val_acc, m_train_loss, m_val_loss
+def second_derivation(w, x, t, sigma_sq):
+    # According to Book by Rogers and Girolami
+    block1 = (-1 / sigma_sq) * np.eye(len(w))
+    block2 = x @ x.T
+    block3 = (sigmoid(x.T @ w) * (1 - sigmoid(x.T @ w)))
+    return block1 - block2 * block3
 
 
-w = np.random.normal(2, 2, size=(train_X.shape[1], 1))
+def compute_metrics(w, X, y):
+    y_hat = sigmoid(X @ w)
+    losses = y - y_hat
+    m_loss = np.mean(np.abs(losses))
+    m_acc = np.mean(y == ((y_hat >= 0.5) * 1.0))
+    return m_loss, m_acc
 
-all_ws = [w]
-all_deltas = []
+
+w_start = np.random.uniform(10, 11, size=(train_X.shape[1], 1))
+assumed_sigma_sq = 1 / 10000000
+
 all_train_losses = []
 all_val_losses = []
-assumed_sigma_sq = 1 / 1
-m_train_acc, m_val_acc, m_train_loss, m_val_loss = compute_metrics(train_X, train_y, val_X, val_y, w)
-all_train_losses.append(m_train_acc)
-all_val_losses.append(m_val_acc)
+all_train_accs = []
+all_val_accs = []
 
-with tqdm(range(iterations)) as pbar:
-    for i in pbar:
-        # print("====================")
-        w, w_delta, gradient, hessian = newton_method_vectorised(
-            w,
-            train_X,
-            train_y,
-            assumed_sigma_sq,
-            first_derivation,
-            second_derivation,
-        )
-        all_ws.append(w)
-        all_deltas.append(w_delta)
-        m_train_acc, m_val_acc, m_train_loss, m_val_loss = compute_metrics(train_X, train_y, val_X, val_y, w)
-        all_train_losses.append(m_train_acc)
-        all_val_losses.append(m_val_acc)
-        pbar.set_description_str(f"Train: {m_train_acc:.4f} | Val: {m_val_acc:.4f}")
-print(f"Final weights: ", w.T)
+all_ws_hats, all_deltas, all_gradients, all_hessians = newton_method(
+    train_X,
+    train_y,
+    w_start,
+    assumed_sigma_sq,
+    100,
+    first_derivation,
+    second_derivation,
+)
+
+for i in range(len(all_ws_hats)):
+    w_iter = all_ws_hats[i]
+    m_train_acc, m_train_loss = compute_metrics(w_iter, train_X, train_y)
+    m_val_acc, m_val_loss = compute_metrics(w_iter, val_X, val_y)
+    all_train_losses.append(m_train_loss)
+    all_val_losses.append(m_val_loss)
+    all_train_accs.append(m_train_acc)
+    all_val_accs.append(m_val_acc)
+
+# with tqdm(range(iterations)) as pbar:
+#     for i in pbar:
+#         # print("====================")
+#         w, w_delta, gradient, hessian = newton_method_vectorised(
+#             w,
+#             train_X,
+#             train_y,
+#             assumed_sigma_sq,
+#             first_derivation,
+#             second_derivation,
+#         )
+#         all_ws.append(w)
+#         all_deltas.append(w_delta)
+#         m_train_acc, m_val_acc, m_train_loss, m_val_loss = compute_metrics(train_X, train_y, val_X, val_y, w)
+#         all_train_losses.append(m_train_acc)
+#         all_val_losses.append(m_val_acc)
+#         pbar.set_description_str(f"Train: {m_train_acc:.4f} | Val: {m_val_acc:.4f}")
+print(f"Final weights: ", all_ws_hats[-1])
 
 ## %%
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
@@ -175,7 +211,7 @@ def plot_w_path(all_w_hats, ax, w_cov, w_mu, title="", precision=2):
     ax.legend()
 
 
-plot_w_path(np.hstack(all_ws).T[::1], ax, w_cov, w_mu, title="Diagonal", precision=2)
+plot_w_path(np.hstack(all_ws_hats).T[::1], ax, w_cov, w_mu, title="Diagonal", precision=2)
 
 # X = np.linspace(w1 - contour_width, w1 + contour_width, 100)
 # Y = np.linspace(w2 - contour_width, w2 + contour_width, 100)
@@ -211,7 +247,7 @@ plt.show()
 
 # %%
 fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-ws = np.hstack(all_ws).T
+ws = np.hstack(all_ws_hats).T
 for i, wx in enumerate(ws.T[:, ::smooth]):
     ax.plot(wx, label=f"w{i}")
 ax.set_xlabel("Iteration")

@@ -81,8 +81,6 @@ def newton_method_slow(X, t, w_init, sigma_sq, num_iter, first_derivation, secon
         all_deltas[i] = weight_change
         all_gradients[i] = gradient
         all_hessians[i] = hessian
-        if i == num_iter - 1:
-            print(gradient, hessian, weight_change)
         m_train_loss, m_train_acc = compute_metrics(w, X, t)
         pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 

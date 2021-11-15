@@ -13,6 +13,7 @@ import random as r
 from data import observed_data, observed_data_binary, observed_data_linear, true_function_polynomial, true_function_sigmoid
 from helper import add_bias_vector, create_polinomial_bases, log_stable, sigmoid
 from tqdm.notebook import tqdm
+from matplotlib.patches import Ellipse
 
 # %%
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
@@ -202,15 +203,15 @@ fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 18))
 burn_in_period = num_iter // 1
 
 
-def plot_w_movements(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", precision=2):
+def plot_w_path(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", precision=2):
     x_min, y_min = all_w_hats.min(axis=0)
     x_max, y_max = all_w_hats.max(axis=0)
     x_cov = precision * np.sqrt(w_cov[0, 0])
     y_cov = precision * np.sqrt(w_cov[1, 1])
     x_mu = w_mu[0]
     y_mu = w_mu[1]
-    x_lims = np.min([x_min, x_mu-x_cov]), np.max([x_max, x_mu+x_cov])
-    y_lims = np.min([y_min, y_mu-x_cov]), np.max([y_max, y_mu+x_cov])
+    x_lims = np.min([x_min, x_mu - x_cov]), np.max([x_max, x_mu + x_cov])
+    y_lims = np.min([y_min, y_mu - y_cov]), np.max([y_max, y_mu + y_cov])
     X = np.linspace(x_lims[0], x_lims[1], 100)
     Y = np.linspace(y_lims[0], y_lims[1], 100)
     X, Y = np.meshgrid(X, Y)
@@ -224,58 +225,86 @@ def plot_w_movements(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", prec
     ax.scatter(all_w_hats[burn_in_period - 1][-2], all_w_hats[burn_in_period - 1][-1], s=100, c='red', label="end")
     ax.set_xlabel("w1")
     ax.set_ylabel("w2")
-    ax.set_xlim(x_lims[0],x_lims[1])
-    ax.set_ylim(y_lims[0],y_lims[1])
+    ax.set_xlim(x_lims[0], x_lims[1])
+    ax.set_ylim(y_lims[0], y_lims[1])
     ax.set_title(f"Weight Movement: {title}")
     ax.legend()
 
-plot_w_movements(all_w_hats_diagonal, ax1, w_cov, w_mu, burn_in_period, title="Diagonal", precision=2)
-plot_w_movements(all_w_hats_orthogonal, ax2, w_cov, w_mu, burn_in_period, title="Orthogonal", precision=2)
+
+plot_w_path(all_w_hats_diagonal, ax1, w_cov, w_mu, burn_in_period, title="Diagonal", precision=2)
+plot_w_path(all_w_hats_orthogonal, ax2, w_cov, w_mu, burn_in_period, title="Orthogonal", precision=2)
+fig.tight_layout()
+plt.show()
+# %%
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 18))
+burn_in_period = num_iter // 100
+
+
+def plot_w_samples(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", precision=2, num_samples=100):
+    w_sample_mean_all = all_w_hats.mean(axis=0)
+    # w_sample_var_all = np.cov(all_w_hats.T)
+    w_sample_mean_relevant = np.mean(all_w_hats[burn_in_period:], axis=0)
+    w_sample_cov_relevant = np.cov(all_w_hats[burn_in_period:].T)
+    W_Sampled = stats.multivariate_normal(w_sample_mean_relevant, w_sample_cov_relevant).rvs(num_samples)
+    x_min, y_min = W_Sampled.min(axis=0)
+    x_max, y_max = W_Sampled.max(axis=0)
+    x_cov = precision * np.sqrt(w_cov[0, 0])
+    y_cov = precision * np.sqrt(w_cov[1, 1])
+    x_mu = w_mu[0]
+    y_mu = w_mu[1]
+    x_lims = np.min([x_min, x_mu - x_cov]), np.max([x_max, x_mu + x_cov])
+    y_lims = np.min([y_min, y_mu - y_cov]), np.max([y_max, y_mu + y_cov])
+    X = np.linspace(x_lims[0], x_lims[1], 100)
+    Y = np.linspace(y_lims[0], y_lims[1], 100)
+    X, Y = np.meshgrid(X, Y)
+    Z_True = stats.multivariate_normal(w_mu, w_cov).pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
+
+    CS = ax.contour(X, Y, Z_True)
+    ax1.clabel(CS, inline=True, fontsize=10)
+    ax.scatter(W_Sampled[:, -2], W_Sampled[:, -1], s=10, c='grey', label="Samples from relevant Centroid")
+    ax.scatter(w_sample_mean_all[-2], w_sample_mean_all[-1], s=100, marker="s", c='red', label="Centroid w discarded")
+    ax.scatter(w_sample_mean_relevant[-2],
+               w_sample_mean_relevant[-1],
+               s=100,
+               marker="p",
+               c='orange',
+               label="Centroid w/o discarded")
+
+    # # https://stackoverflow.com/a/18218468
+    # # https://www.visiondummy.com/2014/04/draw-error-ellipse-representing-covariance-matrix/
+    # # https://stackoverflow.com/a/20127387
+    lambda_, v = np.linalg.eig(w_sample_cov_relevant)
+    lambda_ = np.sqrt(lambda_)
+    ellipsis = Ellipse(
+        xy=(w_sample_mean_relevant[-2], w_sample_mean_relevant[-1]),
+        width=4 * lambda_[0] * np.sqrt(5.991),
+        height=4 * lambda_[1] * np.sqrt(5.991),
+        angle=np.rad2deg(np.arctan2(*v[:,0][::-1])),
+        edgecolor='r',
+        fc='None',
+        lw=2,
+
+    )
+    ax.add_patch(ellipsis)
+
+    ax.set_xlabel("w1")
+    ax.set_ylabel("w2")
+    ax.set_xlim(x_lims[0], x_lims[1])
+    ax.set_ylim(y_lims[0], y_lims[1])
+    ax.set_title(f"Weight Samples: {title}")
+    ax.legend()
+
+
+plot_w_samples(all_w_hats_diagonal, ax1, w_cov, w_mu, burn_in_period, title="Diagonal", precision=2)
+plot_w_samples(all_w_hats_orthogonal, ax2, w_cov, w_mu, burn_in_period, title="Orthogonal", precision=2)
 fig.tight_layout()
 plt.show()
 # %%
 
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 15))
-burn_in_period = num_iter // 10
-
-w_cov = np.array([[1, 0], [0, 1]])
-w_mu = np.array([w1, w2])
-
-X = np.linspace(w_mu[0] - w_cov[0, 0], w_mu[0] + w_cov[0, 0], 100)
-Y = np.linspace(w_mu[1] - w_cov[1, 1], w_mu[1] + w_cov[1, 1], 100)
-X, Y = np.meshgrid(X, Y)
-distribution = stats.multivariate_normal(w_mu, w_cov)
-Z_True = distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
-
-CS = ax1.contour(X, Y, Z_True)
-# ax1.clabel(CS, inline=True, fontsize=10)
-ax1.scatter(all_w_hats[burn_in_period:, -1], all_w_hats[burn_in_period:, -2])
-ax1.set_xlabel("w1")
-ax1.set_ylabel("w2")
-# ax1.legend()
-ax1.set_title("True Distribution")
-
-X = np.linspace(w_mu_prior[-2] - 2 * np.sqrt(w_cov_prior)[-2, -2], w_mu_prior[-2] + 2 * np.sqrt(w_cov_prior)[-2, -2],
-                100)
-Y = np.linspace(w_mu_prior[-1] - 2 * np.sqrt(w_cov_prior)[-1, -1], w_mu_prior[-1] + 2 * np.sqrt(w_cov_prior)[-1, -1],
-                100)
-X, Y = np.meshgrid(X, Y)
-
-pred_distribution = stats.multivariate_normal([0, 0], 1)
-Z_Pred = pred_distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
-
-CS = ax2.contour(X, Y, Z_Pred)
-# CS = ax1.contour(X, Y, Z_Pred)
-ax2.scatter(all_w_hats[burn_in_period:, -1], all_w_hats[burn_in_period:, -2])
-ax2.set_xlabel("w1")
-ax2.set_ylabel("w2")
-# ax2.legend()
-ax2.set_title("Approximation close-up")
-# ax2.set_zlim3d(ax1.get_xlim3d())
-# ax2.set_zlim3d(ax1.get_ylim3d())
-# ax2.set_zlim3d(ax1.get_zlim3d())
-# fig.tight_layout()
-plt.show()
-
 # %%
-plt.plot(all_w_hats)
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 15))
+
+ax1.plot(all_w_hats_diagonal)
+ax2.plot(all_w_hats_orthogonal)
+fig.tight_layout()
+plt.show()

@@ -10,8 +10,10 @@ from scipy import stats
 from matplotlib import cm
 import random as r
 from data import observed_data, observed_data_binary, observed_data_linear, true_function_polynomial
-from helper import add_bias_vector, create_polinomial_bases, sigmoid
+from helper import add_bias_vector, compute_metrics, create_polinomial_bases, sigmoid
 from tqdm.notebook import tqdm
+
+from viz import plot_w_path_from_burnin
 # %%
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 IS_EXACT_FORMULA = True
@@ -28,11 +30,10 @@ val_n = 100
 p_ord = 1
 iterations = 20
 smooth = 1
-data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, False)).T)
-val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, False)).T)
-display(data.max(axis=0))
-display(data.min(axis=0))
-display(data.mean(axis=0))
+noise = 0
+data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, noise)).T)
+val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, noise)).T)
+print(f"True weights are : {w1, w2}")
 
 train_X = data[:, :-1]
 # train_X = add_bias_vector(create_polinomial_bases(data[:, :-1], p_ord))
@@ -85,7 +86,6 @@ def newton_method(X, t, w_init, sigma_sq, num_iter, first_derivation, second_der
         m_train_loss, m_train_acc = compute_metrics(w, X, t)
         pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
-
     return all_ws, all_deltas, all_gradients, all_hessians
 
 
@@ -107,7 +107,7 @@ def second_derivation(w, X, t, sigma_sq):
     # return block1 - np.sum(block2 * block3, axis=0)
     # Andrew Ng Logistic Regression with Newton-Rhapson https://www.youtube.com/watch?v=fF-6QnVB-7E
     all_covs = block2 * block3
-    all_regs = np.repeat([(-1 / sigma_sq) * np.eye(len(w))], len(X), axis=0) 
+    all_regs = np.repeat([(-1 / sigma_sq) * np.eye(len(w))], len(X), axis=0)
     H = np.sum(all_regs - all_covs, axis=0)
     return H
 
@@ -128,13 +128,12 @@ def second_derivation_slow(w, X, t, sigma_sq):
     return H
 
 
-def compute_metrics(w, X, y):
-    y_hat = sigmoid(X @ w)
-    losses = y - y_hat
-    m_loss = np.mean(np.abs(losses))
-    m_acc = np.mean(y == ((y_hat >= 0.5) * 1.0))
-    return m_loss, m_acc
-
+# def compute_metrics(w, X, y):
+#     y_hat = sigmoid(X @ w)
+#     losses = y - y_hat
+#     m_loss = np.mean(np.abs(losses))
+#     m_acc = np.mean(y == ((y_hat >= 0.5) * 1.0))
+#     return m_loss, m_acc
 
 w_start = np.random.normal(2, 2, size=(train_X.shape[1], 1))
 assumed_sigma_sq = 1 / 100
@@ -154,7 +153,8 @@ all_ws_hats, all_deltas, all_gradients, all_hessians = newton_method(
     second_derivation,
 )
 
-for i in range(len(all_ws_hats)):
+# %%
+for i in tqdm(range(len(all_ws_hats))):
     w_iter = all_ws_hats[i]
     m_train_acc, m_train_loss = compute_metrics(w_iter, train_X, train_y)
     m_val_acc, m_val_loss = compute_metrics(w_iter, val_X, val_y)
@@ -165,42 +165,10 @@ for i in range(len(all_ws_hats)):
 
 print(f"Final weights: ", all_ws_hats[-1].T)
 
-## %%
+# %%
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
 burn_in_period = 0
-# all_ws_hats = np.hstack(all_ws_hats).T[::1]
-
-
-def plot_w_path(all_w_hats, ax, w_cov, w_mu, burn_in_period, title="", precision=2):
-    all_w_hats_to_use = all_w_hats[burn_in_period:]
-    x_min, y_min = all_w_hats_to_use.min(axis=0)
-    x_max, y_max = all_w_hats_to_use.max(axis=0)
-    x_cov = precision * np.sqrt(w_cov[0, 0])
-    y_cov = precision * np.sqrt(w_cov[1, 1])
-    x_mu = w_mu[0]
-    y_mu = w_mu[1]
-    x_lims = np.min([x_min, x_mu - x_cov]), np.max([x_max, x_mu + x_cov])
-    y_lims = np.min([y_min, y_mu - y_cov]), np.max([y_max, y_mu + y_cov])
-    X = np.linspace(x_lims[0], x_lims[1], 100)
-    Y = np.linspace(y_lims[0], y_lims[1], 100)
-    X, Y = np.meshgrid(X, Y)
-    Z_True = stats.multivariate_normal(w_mu, w_cov).pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
-
-    CS = ax.contour(X, Y, Z_True)
-    ax.clabel(CS, inline=True, fontsize=10)
-    ax.plot(all_w_hats_to_use[:, -2], all_w_hats_to_use[:, -1])
-    ax.scatter(all_w_hats_to_use[:, -2], all_w_hats_to_use[:, -1], s=10, c="blue", label="step")
-    ax.scatter(all_w_hats_to_use[0][-2], all_w_hats_to_use[0][-1], s=100, c='green', label="start")
-    ax.scatter(all_w_hats_to_use[-1][-2], all_w_hats_to_use[-1][-1], s=100, c='red', label="end")
-    ax.set_xlabel("w1")
-    ax.set_ylabel("w2")
-    ax.set_xlim(x_lims[0], x_lims[1])
-    ax.set_ylim(y_lims[0], y_lims[1])
-    ax.set_title(f"Weight Movement: {title}")
-    ax.legend()
-
-
-plot_w_path(all_ws_hats, ax, w_cov, w_mu, burn_in_period, title="Diagonal", precision=2)
+plot_w_path_from_burnin(all_ws_hats, ax, w_cov, w_mu, burn_in_period, title="Diagonal", precision=2)
 
 # %%
 fig, ax = plt.subplots(1, 1, figsize=(10, 10))

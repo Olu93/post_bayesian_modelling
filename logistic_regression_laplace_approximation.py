@@ -10,47 +10,33 @@ from scipy import stats
 from matplotlib import cm
 import random as r
 from data import observed_data, observed_data_binary, observed_data_linear, true_function_polynomial, true_function_sigmoid
-from helper import add_bias_vector, create_polinomial_bases
-from tqdm import tqdm, tqdm_notebook
-
-from logistic_regression_newton_rhapson import first_derivation, newton_method, second_derivation_slow
+from helper import add_bias_vector, compute_metrics, create_polinomial_bases, predict, sigmoid
+from tqdm.notebook import tqdm
+from logistic_regression_newton_rhapson import first_derivation, newton_method, second_derivation
+from viz import plot_w_samples
 
 # %%
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 IS_EXACT_FORMULA = True
 
 # %%
-
-# def true_function_sigmoid(x,y,w1,w2):
-#     return 1 / (1 + np.exp(w1*x+w2*y+0.25))
-
-# def observed_data_binary(d: int = 10, w1=2, w2=2, std=3):
-#     data = np.random.uniform(-std, std, size=(d, 2))
-#     # print(data)
-#     x, y = data[:, 0], data[:, 1]
-#     z = true_function_sigmoid(x, y, w1, w2)
-#     # z_is_1 = true_function_sigmoid(x, y, w1, w2)
-#     # z_is_0 = 1 - true_function_sigmoid(x, y, w1, w2)
-#     # variance = np.random.uniform(shape=(n, 1))
-#     # err = np.random.randn(d) * 0.25
-#     # err = np.random.uniform(-1, 1) * 0.25
-#     # z = z + err
-#     # print(z.shape)
-#     # print(err.shape)
-#     return x, y, z < 0.5
-
-n = 1000
-w1, w2 = 0.1, -0.7
-xstd = 10
+n = 10000
+w1_mu, w2_mu = 1, -3
+w_cov = np.array([[1, -0.5], [-0.5, 1]])
+w_mu = np.array([w1_mu, w2_mu])
+w_distribution = stats.multivariate_normal(w_mu, w_cov)
+true_w_sample = w_distribution.rvs()
+w1, w2 = true_w_sample[0], true_w_sample[1]
+xstd = 1000
 val_n = 100
 p_ord = 1
-iterations = 50
+iterations = 20
 smooth = 1
-data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, False)).T)
-val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, False)).T)
-display(data.max(axis=0))
-display(data.min(axis=0))
-display(data.mean(axis=0))
+noise = 0.1
+data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, noise)).T)
+val_data = np.vstack(
+    np.array(observed_data_binary(val_n, w1, w2, xstd, noise)).T)
+print(f"True weights are : {w1, w2}")
 
 train_X = data[:, :-1]
 # train_X = add_bias_vector(create_polinomial_bases(data[:, :-1], p_ord))
@@ -73,7 +59,7 @@ val_y = val_data[:, -1][:, None]
 
 
 def laplace_approximation(
-    w,
+    w_init,
     X,
     t,
     sigma_sq,
@@ -81,131 +67,95 @@ def laplace_approximation(
     second_derivation,
     optimizer,
 ):
-
-    for i in tqdm_notebook(range(iterations)):
-        w, _, _, hessian = optimizer(
-            w,
-            X,
-            t,
-            sigma_sq,
-            first_derivation,
-            second_derivation,
-        )
-    hessian = second_derivation(w, X, t, sigma_sq)
+    w = w_init
+    all_ws_hats, all_deltas, all_gradients, all_hessians = optimizer(
+        train_X,
+        train_y,
+        w,
+        assumed_sigma_sq,
+        iterations,
+        first_derivation,
+        second_derivation,
+    )
+    _ = all_deltas, all_gradients, all_hessians
+    w = all_ws_hats[-1]
+    hessian = all_hessians[-1]
     covariance = np.linalg.inv(-hessian)
     posterior = stats.multivariate_normal(w.flat, covariance)
 
-    return posterior, w, covariance
+    return posterior, all_ws_hats.mean(axis=0), covariance
 
 
-def is_neg_def(x):
-    return np.all(np.linalg.eigvals(x) < 0)
+w_start = np.random.normal(2, 2, size=(train_X.shape[1], 1))
+assumed_sigma_sq = 1 / 100
 
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
-
-
-w_hat = np.random.normal(1, 0.5, size=(train_X.shape[1], 1)) * 2
-# w = np.zeros(shape=(train_X.shape[1], 1))
-# w = np.array([[1], [-3], [3]])
-# w = np.random.multivariate_normal([w1,w2], np.eye(train_X.shape[1]))[:, None]
-# w = np.random.multivariate_normal([1, w1, w2], np.eye(train_X.shape[1]))[:, None]
-
-all_ws = [w_hat]
-all_deltas = []
+all_train_losses = []
+all_val_losses = []
 all_train_accs = []
 all_val_accs = []
-assumed_sigma_sq = 1 / (n * 100)
 
-# print("====================")
 posterior, w_hat, w_cov_hat = laplace_approximation(
-    w_hat,
+    w_start,
     train_X,
     train_y,
     assumed_sigma_sq,
     first_derivation,
-    second_derivation_slow,
+    second_derivation,
     newton_method,
 )
 
+num_samples = 1000
 
-def predict(posterior, val_X, num_samples=1000):
-    ws = np.array([posterior.rvs()[:, None] for i in range(num_samples)]).reshape(num_samples, -2)
-    logits = val_X @ ws.T
-    probabilities = sigmoid(logits).mean(axis=1)
-    return probabilities[:, None]
-
-
-for i in range(10):
-    w_sample = posterior.rvs()[:, None]
-    # all_ws.append(w_sample)
-    train_preds = predict(posterior, train_X, num_samples=1000)
-    val_preds = predict(posterior, val_X, num_samples=1000)
-    # train_losses = train_y - train_preds
-    # val_losses = val_y - val_preds
-    m_train_acc = np.mean(train_y == (train_preds > 0.5) * 1.0)
-    m_val_acc = np.mean(val_y == ((val_preds > 0.5) * 1.0))
-    # m_train_acc = np.mean(train_y == (train_preds>0.5)*1.0)
-    # m_val_acc = np.mean(val_y == ((val_preds>0.5)*1.0))
+all_ws_hats = [
+    posterior.rvs(num_samples).mean(axis=0) for i in range(iterations)
+]
+all_ws_hats = np.array(all_ws_hats)
+# %%
+for i in tqdm(range(len(all_ws_hats))):
+    w_iter = all_ws_hats[:, :, None][i]
+    m_train_acc, m_train_loss = compute_metrics(w_iter, train_X, train_y)
+    m_val_acc, m_val_loss = compute_metrics(w_iter, val_X, val_y)
+    all_train_losses.append(m_train_loss)
+    all_val_losses.append(m_val_loss)
     all_train_accs.append(m_train_acc)
     all_val_accs.append(m_val_acc)
-    print(f"Accuracy Train: {m_train_acc:.4f} | Val: {m_train_acc:.4f}")
+
+print(f"Final weights: {all_ws_hats[-1].T}")
 
 # %%
-
+fig, (ax1) = plt.subplots(1, 1, figsize=(10, 18))
+burn_in_period = 0
+plot_w_samples(all_ws_hats,
+               ax1,
+               w_cov,
+               w_mu,
+               burn_in_period,
+               title="Diagonal",
+               precision=2)
+fig.tight_layout()
+plt.show()
 # %%
-# fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-# ax.plot(all_train_losses[::smooth], label=f"train-loss")
-# ax.plot(all_val_losses[::smooth], label=f"val-loss")
-# ax.set_xlabel("Iteration")
-# ax.set_ylabel("Loss")
-# ax.set_title("Losses per iteration")
-# ax.legend()
-# plt.show()
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 20))
 
-## %%
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(17, 10))
-# fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(17, 10), sharex=True, sharey=True)
-# fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(17, 10), sharex=True, sharey=True, subplot_kw={"projection": "3d"})
-w_cov = np.array([[1, 0], [0, 1]])
-w_mu = np.array([w1, w2])
 
-X = np.linspace(w_mu[0] - w_cov[0, 0], w_mu[0] + w_cov[0, 0], 100)
-Y = np.linspace(w_mu[1] - w_cov[1, 1], w_mu[1] + w_cov[1, 1], 100)
-X, Y = np.meshgrid(X, Y)
-distribution = stats.multivariate_normal(w_mu, w_cov)
-Z_True = distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
+def plot_w_contour(w_mu, w_cov, title, ax, point=None):
+    X_true = np.linspace(w_mu[0] - w_cov[0, 0], w_mu[0] + w_cov[0, 0], 100)
+    Y_true = np.linspace(w_mu[1] - w_cov[1, 1], w_mu[1] + w_cov[1, 1], 100)
+    X, Y = np.meshgrid(X_true, Y_true)
+    distribution = stats.multivariate_normal(w_mu, w_cov)
+    Z_True = distribution.pdf(np.array([X.flatten(),
+                                        Y.flatten()]).T).reshape(X.shape)
+    CS = ax.contour(X, Y, Z_True)
+    if point is not None:
+        ax.scatter(point[0], point[1])
+    ax.set_xlabel("w1")
+    ax.set_ylabel("w2")
+    ax.legend()
+    ax.set_title(title)
 
-CS = ax1.contour(X, Y, Z_True)
-# ax1.clabel(CS, inline=True, fontsize=10)
-ax1.set_xlabel("w1")
-ax1.set_ylabel("w2")
-ax1.legend()
-ax1.set_title("True Distribution")
 
-X = np.linspace(w_hat[-2] - 2 * np.sqrt(w_cov_hat)[-2, -2], w_hat[-2] + 2 * np.sqrt(w_cov_hat)[-2, -2], 100)
-# X = np.linspace(w_hat - w_hat*0.2, w_hat + w_hat*0.2, 100)
-Y = np.linspace(w_hat[-1] - 2 * np.sqrt(w_cov_hat)[-1, -1], w_hat[-1] + 2 * np.sqrt(w_cov_hat)[-1, -1], 100)
-# Y = np.linspace(w_hat - w_hat*0.2, w_hat + w_hat*0.2, 100)
-X, Y = np.meshgrid(X, Y)
-pred_distribution = stats.multivariate_normal(w_hat.flatten(), w_cov_hat)
-# pred_distribution = stats.multivariate_normal(w_hat.flatten(), w_cov_hat)
+plot_w_contour(w_mu, w_cov, "True Distribution", ax1, w_hat)
+plot_w_contour(w_hat.flat, w_cov_hat, "Approximation close-up", ax2)
 
-Z_Pred = pred_distribution.pdf(np.array([X.flatten(), Y.flatten()]).T).reshape(X.shape)
-w_sampled = pred_distribution.rvs(5)
-
-CS = ax2.contour(X, Y, Z_Pred)
-CS = ax1.contour(X, Y, Z_Pred)
-ax1.scatter(w_sampled[:, -2], w_sampled[:, -1], s=100)
-# ax1.scatter(Z_Pred[:, 0], Z_Pred[:, 1])
-# ax2.clabel(CS, inline=True, fontsize=10)
-ax2.set_xlabel("w1")
-ax2.set_ylabel("w2")
-# ax2.legend()
-ax2.set_title("Approximation close-up")
-# ax2.set_zlim3d(ax1.get_xlim3d())
-# ax2.set_zlim3d(ax1.get_ylim3d())
-# ax2.set_zlim3d(ax1.get_zlim3d())
-# fig.tight_layout()
+fig.tight_layout()
 plt.show()

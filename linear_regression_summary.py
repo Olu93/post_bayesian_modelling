@@ -112,7 +112,7 @@ class RegularisedLinearRegression(Predictor):
         init_w_mu = self.zeros(X.shape[1])[:, None]
         err_sigma_sq = self.noise_assumption
         reg_factor = err_sigma_sq / self.lmb
-        init_w_cov = reg_factor * I # Lambda is a combination of base noise and reg term. Hence, noise assumption remains 1
+        init_w_cov = reg_factor * I  # Lambda is a combination of base noise and reg term. Hence, noise assumption remains 1
         posterior_cov = I.copy()
         weight_estimate = self.compute_posterior_mean(X, y, 1, posterior_cov, init_w_mu, init_w_cov)
         self.weights = weight_estimate
@@ -129,7 +129,7 @@ class MAPLinearRegression(Predictor):
         init_w_mu = self.zeros(X.shape[1])[:, None]
         err_sigma_sq = self.noise_assumption
         reg_factor = err_sigma_sq / self.lmb
-        init_w_cov = reg_factor * I # Lambda is a combination of base noise and reg term. Hence, noise assumption remains 1
+        init_w_cov = reg_factor * I  # Lambda is a combination of base noise and reg term. Hence, noise assumption remains 1
         posterior_cov = self.compute_posterior_covariance(X, err_sigma_sq, init_w_cov)
         weight_estimate = self.compute_posterior_mean(X, y, err_sigma_sq, posterior_cov, init_w_mu, init_w_cov)
         self.weights = weight_estimate

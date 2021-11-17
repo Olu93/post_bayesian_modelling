@@ -13,7 +13,7 @@ from data import observed_data, observed_data_binary, observed_data_linear, true
 from helper import add_bias_vector, compute_metrics, create_polinomial_bases, predict, sigmoid
 from tqdm.notebook import tqdm
 from logistic_regression_newton_rhapson import first_derivation, newton_method, second_derivation
-from viz import plot_w_samples
+from viz import plot_train_val_curve, plot_w_samples
 
 # %%
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
@@ -63,27 +63,29 @@ def laplace_approximation(
     X,
     t,
     sigma_sq,
+    iterations,
     first_derivation,
     second_derivation,
     optimizer,
 ):
     w = w_init
     all_ws_hats, all_deltas, all_gradients, all_hessians = optimizer(
-        train_X,
-        train_y,
+        X,
+        t,
         w,
-        assumed_sigma_sq,
+        sigma_sq,
         iterations,
         first_derivation,
         second_derivation,
     )
-    _ = all_deltas, all_gradients, all_hessians
+    optimization_summaries = (all_ws_hats, all_deltas, all_gradients,
+                              all_hessians)
     w = all_ws_hats[-1]
     hessian = all_hessians[-1]
     covariance = np.linalg.inv(-hessian)
     posterior = stats.multivariate_normal(w.flat, covariance)
 
-    return posterior, all_ws_hats.mean(axis=0), covariance
+    return posterior, w, covariance, optimization_summaries
 
 
 w_start = np.random.normal(2, 2, size=(train_X.shape[1], 1))
@@ -94,25 +96,34 @@ all_val_losses = []
 all_train_accs = []
 all_val_accs = []
 
-posterior, w_hat, w_cov_hat = laplace_approximation(
+iterations = 20
+posterior, w_hat, w_cov_hat, summaries = laplace_approximation(
     w_start,
     train_X,
     train_y,
     assumed_sigma_sq,
+    iterations,
     first_derivation,
     second_derivation,
     newton_method,
 )
 
-num_samples = 1000
+num_samples = 100
 
+all_posteriors_through_optimization = [
+    stats.multivariate_normal(summaries[0][i].flat,
+                              np.linalg.inv(-summaries[-1][i]))
+    for i in range(len(summaries[0]))
+]
 all_ws_hats = [
-    posterior.rvs(num_samples).mean(axis=0) for i in range(iterations)
+    historical_posterior.rvs(num_samples).mean(axis=0)
+    for historical_posterior in all_posteriors_through_optimization
 ]
 all_ws_hats = np.array(all_ws_hats)
+print(f"Final weights: {all_ws_hats[-1].T}")
 # %%
 for i in tqdm(range(len(all_ws_hats))):
-    w_iter = all_ws_hats[:, :, None][i]
+    w_iter = all_ws_hats[i][:, None]
     m_train_acc, m_train_loss = compute_metrics(w_iter, train_X, train_y)
     m_val_acc, m_val_loss = compute_metrics(w_iter, val_X, val_y)
     all_train_losses.append(m_train_loss)
@@ -120,22 +131,22 @@ for i in tqdm(range(len(all_ws_hats))):
     all_train_accs.append(m_train_acc)
     all_val_accs.append(m_val_acc)
 
-print(f"Final weights: {all_ws_hats[-1].T}")
-
+fig, (ax1) = plt.subplots(1, 1, figsize=(7, 10))
+plot_train_val_curve(1, all_train_losses, all_val_losses, ax1, "Losses")
 # %%
-fig, (ax1) = plt.subplots(1, 1, figsize=(10, 18))
+fig, (ax1) = plt.subplots(1, 1, figsize=(7, 7))
 burn_in_period = 0
-plot_w_samples(all_ws_hats,
+plot_w_samples(all_posteriors_through_optimization[-1].rvs(1000),
                ax1,
                w_cov,
                w_mu,
                burn_in_period,
-               title="Diagonal",
+               title="Over the history of optimization iterations",
                precision=2)
 fig.tight_layout()
 plt.show()
 # %%
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 20))
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 14))
 
 
 def plot_w_contour(w_mu, w_cov, title, ax, point=None):
@@ -159,3 +170,5 @@ plot_w_contour(w_hat.flat, w_cov_hat, "Approximation close-up", ax2)
 
 fig.tight_layout()
 plt.show()
+
+# %%

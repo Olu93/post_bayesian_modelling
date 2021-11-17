@@ -13,7 +13,7 @@ from data import observed_data, observed_data_binary, observed_data_linear, true
 from helper import add_bias_vector, compute_metrics, create_polinomial_bases, sigmoid
 from tqdm.notebook import tqdm
 
-from viz import plot_w_path_from_burnin
+from viz import plot_train_val_curve, plot_w_path_from_burnin
 # %%
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 IS_EXACT_FORMULA = True
@@ -32,7 +32,8 @@ iterations = 20
 smooth = 1
 noise = 0
 data = np.vstack(np.array(observed_data_binary(n, w1, w2, xstd, noise)).T)
-val_data = np.vstack(np.array(observed_data_binary(val_n, w1, w2, xstd, noise)).T)
+val_data = np.vstack(
+    np.array(observed_data_binary(val_n, w1, w2, xstd, noise)).T)
 print(f"True weights are : {w1, w2}")
 
 train_X = data[:, :-1]
@@ -61,7 +62,8 @@ val_y = val_data[:, -1][:, None]
 #   - Stop if $F^{\prime}(x_{n}) = 0$. This is extremely unlikely but if it does happen then computers do not like dividing by zero. It means the method has located a turning point of the function.
 
 
-def newton_method(X, t, w_init, sigma_sq, num_iter, first_derivation, second_derivation):
+def newton_method(X, t, w_init, sigma_sq, num_iter, first_derivation,
+                  second_derivation):
 
     num_features = X.shape[1]
     num_true_run_length = num_iter + 1
@@ -71,20 +73,23 @@ def newton_method(X, t, w_init, sigma_sq, num_iter, first_derivation, second_der
     all_hessians = np.zeros((num_true_run_length, num_features, num_features))
     w = w_init
     all_ws[0] = w_init
+    all_hessians[0] = -np.eye(len(w)) * sigma_sq
 
     pbar = tqdm(range(1, num_true_run_length))
     for i in pbar:
         gradient = first_derivation(w, X, t, sigma_sq)
         hessian = second_derivation(w, X, t, sigma_sq)
         inv_hessian = np.linalg.inv(hessian)
-        weight_change = (inv_hessian @ gradient)  # / (len(X) if use_mean else 1)
+        weight_change = (inv_hessian @ gradient
+                         )  # / (len(X) if use_mean else 1)
         w = w - weight_change
         all_ws[i] = w
         all_deltas[i] = weight_change
         all_gradients[i] = gradient
         all_hessians[i] = hessian
         m_train_loss, m_train_acc = compute_metrics(w, X, t)
-        pbar.set_description_str(f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
+        pbar.set_description_str(
+            f"Loss: {m_train_loss:.2f} | Acc: {m_train_acc:.2f}")
 
     return all_ws, all_deltas, all_gradients, all_hessians
 
@@ -95,7 +100,8 @@ def is_neg_def(x):
 
 def first_derivation(w, X, t, sigma_sq):
     # print(np.sum(X * (t - sigmoid(X @ w)), axis=0))
-    result = (-1 / sigma_sq) * w + np.sum(X * (t - sigmoid(X @ w)), axis=0)[:, None]
+    result = (-1 / sigma_sq) * w + np.sum(X * (t - sigmoid(X @ w)),
+                                          axis=0)[:, None]
     return result
 
 
@@ -168,16 +174,19 @@ print(f"Final weights: ", all_ws_hats[-1].T)
 # %%
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
 burn_in_period = 0
-plot_w_path_from_burnin(all_ws_hats, ax, w_cov, w_mu, burn_in_period, title="Diagonal", precision=2)
+plot_w_path_from_burnin(all_ws_hats,
+                        ax,
+                        w_cov,
+                        w_mu,
+                        burn_in_period,
+                        title="Diagonal",
+                        precision=2)
 
 # %%
 fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-ax.plot(all_train_losses[::smooth], label=f"train-loss")
-ax.plot(all_val_losses[::smooth], label=f"val-loss")
-ax.set_xlabel("Iteration")
-ax.set_ylabel("Acc")
-ax.set_title("Accuracies per iteration")
-ax.legend()
+
+
+plot_train_val_curve(smooth, all_train_losses, all_val_losses, ax, "Losses")
 plt.show()
 
 # %%

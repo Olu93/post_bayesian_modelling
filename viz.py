@@ -169,3 +169,12 @@ def plot_w_path_until_burnin(all_w_hats,
     ax.set_ylim(y_lims[0], y_lims[1])
     ax.set_title(f"Weight Movement: {title}")
     ax.legend()
+
+
+def plot_train_val_curve(smooth, all_train_values, all_val_values, ax, y_label):
+    ax.plot(all_train_values[::smooth], label=f"train-loss")
+    ax.plot(all_val_values[::smooth], label=f"val-loss")
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel(y_label)
+    # ax.set_title("Accuracies per iteration")
+    ax.legend()

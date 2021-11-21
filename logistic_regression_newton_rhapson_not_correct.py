@@ -72,9 +72,9 @@ def newton_method(X, t, w_init, sigma_sq, num_iter, first_derivation,
     all_deltas = np.zeros((num_true_run_length, num_features, 1))
     all_gradients = np.zeros((num_true_run_length, num_features, 1))
     all_hessians = np.zeros((num_true_run_length, num_features, num_features))
-    w = w_init
-    all_ws[0] = w_init
-    all_hessians[0] = -np.eye(len(w)) * sigma_sq
+    all_ws[0] = first_derivation(w_init, X, t, sigma_sq)
+    all_hessians[0] = second_derivation(w_init, X, t, sigma_sq)
+    w = w_init - (np.linalg.inv(all_hessians[0]) @ all_ws[0])
 
     pbar = tqdm(range(1, num_true_run_length))
     for i in pbar:
@@ -94,45 +94,49 @@ def newton_method(X, t, w_init, sigma_sq, num_iter, first_derivation,
     return all_ws, all_deltas, all_gradients, all_hessians
 
 
-def is_neg_def(x):
-    return np.all(np.linalg.eigvals(x) < 0)
-
-
 def first_derivation(w, X, t, sigma_sq):
     # print(np.sum(X * (t - sigmoid(X @ w)), axis=0))
-    result = (-1 / sigma_sq) * w + np.sum(X * (t - sigmoid(X @ w)),
-                                          axis=0)[:, None]
+    result = (-1 / sigma_sq) * w + np.mean(X * (t - sigmoid(X @ w)),
+                                             axis=0)[:, None]
     return result
 
 
 def second_derivation(w, X, t, sigma_sq):
-    # block1 = (-1 / sigma_sq) * np.eye(len(w))
-    # block2 = np.sum(X * X, axis=1)
-    block2 = np.matmul(X[:, :, None], X[:, None, :])
-    block3 = (sigmoid(X @ w) * (1 - sigmoid(X @ w)))[:, :, None]
-    # return block1 - np.sum(block2 * block3, axis=0)
-    # Andrew Ng Logistic Regression with Newton-Rhapson https://www.youtube.com/watch?v=fF-6QnVB-7E
-    all_covs = block2 * block3
-    all_regs = np.repeat([(-1 / sigma_sq) * np.eye(len(w))], len(X), axis=0)
-    H = np.sum(all_regs - all_covs, axis=0)
-    return H
+    # http://www.dcs.gla.ac.uk/~srogers/firstcourseml/matlab/chapter4/logmap.html
+    block1 = (1 / sigma_sq) * np.eye(len(w))
+    P_n = sigmoid(X @ w) * (1 - sigmoid(X @ w))
+    block_2_mid = P_n*np.eye(len(P_n))
+    block2 = -X.T @ block_2_mid @ X
+
+    return block2 - block1
 
 
-def second_derivation_slow(w, X, t, sigma_sq):
-    # According to Book by Rogers and Girolami
-    num_features = len(w)
-    H = np.zeros((num_features, num_features))
-    for i in range(len(X)):
-        x = X[i][None, :]
-        xT = x.T
-        block1 = (-1 / sigma_sq) * np.eye(num_features)
-        block2 = xT @ xT.T
-        P_n = sigmoid(x @ w)
-        block3 = (P_n * (1 - P_n))
-        H += block1 - block2 * block3
+# def second_derivation(w, X, t, sigma_sq):
+#     # block1 = (-1 / sigma_sq) * np.eye(len(w))
+#     # block2 = np.sum(X * X, axis=1)
+#     block2 = np.matmul(X[:, :, None], X[:, None, :])
+#     block3 = (sigmoid(X @ w) * (1 - sigmoid(X @ w)))[:, :, None]
+#     # return block1 - np.sum(block2 * block3, axis=0)
+#     # Andrew Ng Logistic Regression with Newton-Rhapson https://www.youtube.com/watch?v=fF-6QnVB-7E
+#     all_covs = block2 * block3
+#     all_regs = np.repeat([(-1 / sigma_sq) * np.eye(len(w))], len(X), axis=0)
+#     H = np.sum(all_regs - all_covs, axis=0)
+#     return H
 
-    return H
+# def second_derivation_slow(w, X, t, sigma_sq):
+#     # According to Book by Rogers and Girolami
+#     num_features = len(w)
+#     H = np.zeros((num_features, num_features))
+#     for i in range(len(X)):
+#         x = X[i][None, :]
+#         xT = x.T
+#         block1 = (-1 / sigma_sq) * np.eye(num_features)
+#         block2 = xT @ xT.T
+#         P_n = sigmoid(x @ w)
+#         block3 = (P_n * (1 - P_n))
+#         H += block1 - block2 * block3
 
+#     return H
 
 # def compute_metrics(w, X, y):
 #     y_hat = sigmoid(X @ w)
@@ -142,13 +146,14 @@ def second_derivation_slow(w, X, t, sigma_sq):
 #     return m_loss, m_acc
 
 w_start = np.random.normal(2, 2, size=(train_X.shape[1], 1))
-assumed_sigma_sq = 1 / 100
+assumed_sigma_sq = 1 / 1000
 
 all_train_losses = []
 all_val_losses = []
 all_train_accs = []
 all_val_accs = []
 
+iterations = 100
 all_ws_hats, all_deltas, all_gradients, all_hessians = newton_method(
     train_X,
     train_y,
@@ -159,7 +164,7 @@ all_ws_hats, all_deltas, all_gradients, all_hessians = newton_method(
     second_derivation,
 )
 
-# %%
+## %%
 for i in tqdm(range(len(all_ws_hats))):
     w_iter = all_ws_hats[i]
     m_train_acc, m_train_loss = compute_metrics(w_iter, train_X, train_y)
@@ -171,7 +176,7 @@ for i in tqdm(range(len(all_ws_hats))):
 
 print(f"Final weights: ", all_ws_hats[-1].T)
 
-# %%
+## %%
 fig, ax = plt.subplots(1, 1, figsize=(15, 15))
 burn_in_period = 0
 plot_w_path_from_burnin(all_ws_hats,
@@ -184,7 +189,6 @@ plot_w_path_from_burnin(all_ws_hats,
 
 # %%
 fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-
 
 plot_train_val_curve(smooth, all_train_losses, all_val_losses, ax, "Losses")
 plt.show()

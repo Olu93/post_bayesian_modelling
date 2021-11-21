@@ -171,10 +171,25 @@ def plot_w_path_until_burnin(all_w_hats,
     ax.legend()
 
 
-def plot_train_val_curve(smooth, all_train_values, all_val_values, ax, y_label):
+def plot_train_val_curve(smooth, all_train_values, all_val_values, ax,
+                         y_label):
     ax.plot(all_train_values[::smooth], label=f"train-loss")
     ax.plot(all_val_values[::smooth], label=f"val-loss")
     ax.set_xlabel("Iteration")
     ax.set_ylabel(y_label)
     # ax.set_title("Accuracies per iteration")
     ax.legend()
+
+
+def plot_contour_2d(mean, cov, ax):
+    var_x = cov[0, 0]
+    var_y = cov[1, 1]
+    X = np.linspace(mean[0] - var_x, mean[0] + var_x, 100)
+    Y = np.linspace(mean[1] - var_y, mean[1] + var_y, 100)
+    X, Y = np.meshgrid(X, Y)
+    flat_data = np.array([X.flatten(), Y.flatten()]).T
+    Z_flat = stats.multivariate_normal(mean, cov).pdf(flat_data)
+    Z = Z_flat.reshape(X.shape)
+    CS = ax.contour(X, Y, Z)
+    ax.clabel(CS, inline=True, fontsize=10)
+    return CS

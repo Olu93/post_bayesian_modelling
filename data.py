@@ -8,6 +8,7 @@ import random as r
 from scipy import special
 
 from helper import sigmoid
+from viz import plot_contour_2d
 # https://github.com/jkclem/MCMC-Log-Reg/blob/master/MCMC%20Logistic%20Regression.ipynb
 # %%
 np.random.seed(42)
@@ -49,11 +50,24 @@ def true_function_sigmoid(x, y, w1, w2):
     return sigmoid(x)
 
 
+def true_function_softmax(X, W):
+    # Compute all single logits per data point and class
+    logits = X[None, :, :] @ W.T
+    # Compute singular probits
+    probits = sigmoid(logits)
+    # Compute sum of class distributions per data point
+    sum_of_probits = probits.sum(axis=-1)
+    # Compute softmax by dividing row wise
+    probabilities_per_class = probits / sum_of_probits.T
+    return probabilities_per_class.squeeze()
+
+
 def observed_data(d: int = 10, p1=2, p2=3):
     data = np.random.randn(d, 2) * 3
     x, y = data[:, 0], data[:, 1]
     variance = 2.5
-    return x, y, true_function_polynomial(x, y, p1, p2) + np.random.randn(d) * variance
+    return x, y, true_function_polynomial(x, y, p1,
+                                          p2) + np.random.randn(d) * variance
 
 
 def observed_data_wobbly(d: int = 10):
@@ -138,3 +152,71 @@ ax.set_ylabel('Y Label')
 ax.set_zlabel('Z Label')
 ax.view_init(30, 15)
 plt.show()
+
+# %%
+np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.5g" % x))
+
+
+def observed_data_classification(num_data,
+                                 spread_data,
+                                 num_weights=5,
+                                 num_classes=3,
+                                 noisy=False,
+                                 seed=42):
+    np.random.seed(seed)
+    class_weights = np.random.normal(size=(num_classes, num_weights))
+    # X = np.random.normal(0, spread_data, size=(num_data, num_weights))
+    X = np.random.uniform(-spread_data,
+                          spread_data,
+                          size=(num_data, num_weights))
+    P_c_X = true_function_softmax(X, class_weights)
+    y = np.argmax(P_c_X, axis=-1)
+    if noisy:
+        c = P_c_X.cumsum(axis=-1)
+        u = np.random.rand(len(c), 1)
+        y = (u <= c).argmax(axis=-1)
+
+    return X, y[:, None], class_weights, P_c_X
+
+
+X, y, W_c, P_c = observed_data_classification(1000, 100, 5, 10, 1, 42)
+plt.hist(y, bins=len(np.unique(y)))
+plt.show()
+plt.hist(P_c[:, 3])
+plt.show()
+
+
+# %%
+def observed_data_classification_two_features(num_data,
+                                              mean_data,
+                                              cov_data,
+                                              num_classes=3,
+                                              noisy=False,
+                                              seed=42):
+    np.random.seed(seed)
+    num_weights = len(mean_data)
+    class_weights = np.random.normal(size=(num_classes, num_weights))
+    X = np.random.multivariate_normal(mean_data, cov_data, size=num_data)
+    P_c_X = true_function_softmax(X, class_weights)
+    y = np.argmax(P_c_X, axis=-1)
+    if noisy:
+        c = P_c_X.cumsum(axis=-1)
+        u = np.random.rand(len(c), 1)
+        y = (u <= c).argmax(axis=-1)
+
+    return X, y[:, None], class_weights, P_c_X
+
+
+cov_data = np.array([[10, 8], [8, 10]])
+mean_data = np.array([5, 5])
+X, y, W_c, P_c = observed_data_classification_two_features(
+    1000, mean_data, cov_data, 10, 1, 42)
+plt.hist(y, bins=len(np.unique(y)))
+plt.show()
+plt.hist(P_c[:, 3])
+plt.show()
+ax = plt.gca()
+plot_contour_2d(mean_data, cov_data, ax)
+# %%
+
+# %%

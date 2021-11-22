@@ -89,7 +89,7 @@ def kmeans_mahalanobis_distance(K, X, num_iter=100):
     for i in range(num_iter):
         X_differences = X[:, None, :] - mu_k
         cov_matrix = (X @ X.T) / len(X)
-        X_sq_differences = X_differences @ cov_matrix @ X_differences
+        X_sq_differences = X_differences @ np.linalg.inv(cov_matrix) @ X_differences
         X_sum_sq_differences = X_sq_differences.sum(axis=-1)
         X_root_sum_sq_differences = np.sqrt(X_sum_sq_differences)
         assignments = X_root_sum_sq_differences.argmax(axis=-1)
@@ -129,5 +129,12 @@ plot_clustering(X, assigments_mah, ax, centroids_mah)
 for mean, cov in zip(X_means, X_covs):
     plot_contour_2d(mean, cov, ax)
 
+fig.tight_layout()
+plt.show()
+# %%
+fig, ax = plt.subplots(1, 1, sharey=True, sharex=True, figsize=(10, 10))
+ax.plot(losses_euc[::2], label="Eucledian Distance")
+ax.plot(losses_mah[::2], label="Mahalanobis Distance")
+ax.legend()
 fig.tight_layout()
 plt.show()

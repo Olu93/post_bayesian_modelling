@@ -8,7 +8,7 @@ import random as r
 from scipy import special
 
 from helper import sigmoid
-from viz import plot_contour_2d
+from viz import plot_contour_2d, plot_countours_and_points
 # https://github.com/jkclem/MCMC-Log-Reg/blob/master/MCMC%20Logistic%20Regression.ipynb
 # %%
 np.random.seed(42)
@@ -188,35 +188,44 @@ plt.show()
 
 # %%
 def observed_data_classification_two_features(num_data,
-                                              mean_data,
-                                              cov_data,
-                                              num_classes=3,
-                                              noisy=False,
+                                              mean_data_0,
+                                              cov_data_0,
                                               seed=42):
     np.random.seed(seed)
-    num_weights = len(mean_data)
-    class_weights = np.random.normal(size=(num_classes, num_weights))
-    X = np.random.multivariate_normal(mean_data, cov_data, size=num_data)
-    P_c_X = true_function_softmax(X, class_weights)
-    y = np.argmax(P_c_X, axis=-1)
-    if noisy:
-        c = P_c_X.cumsum(axis=-1)
-        u = np.random.rand(len(c), 1)
-        y = (u <= c).argmax(axis=-1)
+    rotate_matrix = np.identity(
+        2) + np.ones_like(cov_data_0) * (np.identity(2) - 1)
 
-    return X, y[:, None], class_weights, P_c_X
+    mean_data_1 = np.copy(mean_data_0)
+    mean_data_1 += 5
+    cov_data_1 = cov_data_0 * rotate_matrix
+    mean_data_2 = np.copy(mean_data_0)
+    mean_data_2[1] += 5
+    # mean_data_2 = mean_data_0 + 5
+    cov_data_2 = (cov_data_0 / 2) * np.identity(2)
+
+    X_0 = np.random.multivariate_normal(mean_data_0, cov_data_0, size=num_data)
+    X_1 = np.random.multivariate_normal(mean_data_1, cov_data_1, size=num_data)
+    X_2 = np.random.multivariate_normal(mean_data_2, cov_data_2, size=num_data)
+    y_0 = np.ones(len(X_0))[:, None] * 1
+    y_1 = np.ones(len(X_1))[:, None] * 2
+    y_2 = np.ones(len(X_2))[:, None] * 3
+    X = np.vstack([X_0, X_1, X_2])
+    y = np.vstack([y_0, y_1, y_2]).astype(int)
+    means = np.array([mean_data_0, mean_data_1, mean_data_2])
+    covs = np.array([cov_data_0, cov_data_1, cov_data_2])
+    return X, y, means, covs
 
 
-cov_data = np.array([[10, 8], [8, 10]])
-mean_data = np.array([5, 5])
-X, y, W_c, P_c = observed_data_classification_two_features(
-    1000, mean_data, cov_data, 10, 1, 42)
+init_cov = 2
+cov_data = np.array([[3, init_cov], [init_cov, 3]])
+mean_data = np.array([1, 1])
+X, y, means, covs = observed_data_classification_two_features(
+    1000, mean_data, cov_data)
 plt.hist(y, bins=len(np.unique(y)))
 plt.show()
 plt.hist(P_c[:, 3])
 plt.show()
+fig = plt.figure(figsize=(7, 7))
 ax = plt.gca()
-plot_contour_2d(mean_data, cov_data, ax)
-# %%
-
-# %%
+plot_countours_and_points(ax, X, y, means, covs)
+plt.show()

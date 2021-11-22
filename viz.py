@@ -193,3 +193,12 @@ def plot_contour_2d(mean, cov, ax):
     CS = ax.contour(X, Y, Z)
     ax.clabel(CS, inline=True, fontsize=10)
     return CS
+
+def plot_countours_and_points(ax, X, y, means, covs):
+    for idx, c in enumerate(np.unique(y)):
+        c_subset = y==c
+        X_c = X[c_subset.flat]
+        plot_contour_2d(means[idx], covs[idx], ax)
+        ax.scatter(X_c[:,0], X_c[:, 1], s=5, label=f'Class {c}')
+    ax.legend()
+    return ax

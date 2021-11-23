@@ -44,7 +44,7 @@ plt.show()
 
 
 # %%
-def kmeans_eucledian_distance(K, X, num_iter=100):
+def kmeans_eucledian_distance(K, X, num_iter=10):
     assignments = np.random.randint(0, K, size=len(X))
     mu_k = X[np.random.randint(0, len(X), size=K)]
     losses = np.zeros(num_iter)
@@ -70,7 +70,7 @@ def kmeans_eucledian_distance(K, X, num_iter=100):
 
 centroids_euc, assigments_euc, losses_euc = kmeans_eucledian_distance(4, X)
 
-plt.plot(losses_euc[::2])
+plt.plot(losses_euc)
 
 # %%
 
@@ -82,7 +82,7 @@ for mean, cov in zip(X_means, X_covs):
 
 
 # %%
-def kmeans_mahalanobis_distance(K, X, num_iter=100):
+def kmeans_mahalanobis_distance(K, X, num_iter=10):
     assignments = np.random.randint(0, K, size=len(X))
     mu_k = X[np.random.randint(0, len(X), size=K)]
     losses = np.zeros(num_iter)
@@ -109,7 +109,7 @@ def kmeans_mahalanobis_distance(K, X, num_iter=100):
 
 centroids_mah, assigments_mah, losses_mah = kmeans_eucledian_distance(4, X)
 
-plt.plot(losses_mah[::2])
+plt.plot(losses_mah)
 
 # %%
 fig = plt.figure(figsize=(10, 10))

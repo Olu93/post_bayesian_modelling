@@ -55,8 +55,15 @@ def polinomial_kernel(X_n, X_m):
     pass
 
 # %%
+def create_assignment_matrix(K, assignments):
+    N = len(assignments)
+    assignment_matrix = np.zeros((N, K, 1))  
+    assignment_matrix[range(N), assignments] = 1
+    return assignment_matrix
+
 def kmeans_kernelised_distance(K, X, num_iter=10, kernel_function = linear_kernel):
     assignments = np.random.randint(0, K, size=len(X))
+    assignment_matrix = create_assignment_matrix(K, assignments).squeeze()
     mu_k = X[np.random.randint(0, len(X), size=K)]
     counter = Counter({k:0 for k in range(K)})
     counter.update(Counter(np.sort(assignments)))
@@ -65,17 +72,18 @@ def kmeans_kernelised_distance(K, X, num_iter=10, kernel_function = linear_kerne
 
         cnts = np.array(list(counter.values()))[None, :]
         #  K(x_n; x_n)
-        k_X_X = np.diag(kernel_function(X, X))[:, None]
+        k_X_X = np.repeat(np.diag(kernel_function(X, X))[:, None], K, axis=1)
         # z_m_k * K(x_n; x_m)
         k_X_mu = kernel_function(X, mu_k)
         normed_k_X_mu = 2 * (k_X_mu/cnts)
 
-        # k_mu_mu = kernel_function(mu_k, mu_k)
-        normed_k_mu_mu = np.diag(1 * (k_mu_mu/(cnts**2)))[None, :]
+        k_X_mu_mu = kernel_function(X, mu_k)
+        normed_k_X_mu_mu = 1 * (k_X_mu_mu/(cnts**2))
 
         
-        dist_X2X_per_class = k_X_X - normed_k_X_mu + normed_k_mu_mu
+        dist_X2X_per_class = assignment_matrix * (k_X_X - normed_k_X_mu + normed_k_X_mu_mu)
         assignments = dist_X2X_per_class.argmin(axis=-1)
+        assignment_matrix = create_assignment_matrix(K, assignments).squeeze()
         for k in range(K):
             idx_of_members = assignments == k
             if not any(idx_of_members):

@@ -53,7 +53,7 @@ def kmeans_eucledian_distance(K, X, num_iter=100):
         X_sq_differences = X_differences**2
         X_sum_sq_differences = X_sq_differences.sum(axis=-1)
         X_root_sum_sq_differences = np.sqrt(X_sum_sq_differences)
-        assignments = X_root_sum_sq_differences.argmax(axis=-1)
+        assignments = X_root_sum_sq_differences.argmin(axis=-1)
         for k in range(K):
             idx_of_members = assignments == k
             if not any(idx_of_members):
@@ -92,7 +92,7 @@ def kmeans_mahalanobis_distance(K, X, num_iter=100):
         X_sq_differences = X_differences @ np.linalg.inv(cov_matrix) @ X_differences
         X_sum_sq_differences = X_sq_differences.sum(axis=-1)
         X_root_sum_sq_differences = np.sqrt(X_sum_sq_differences)
-        assignments = X_root_sum_sq_differences.argmax(axis=-1)
+        assignments = X_root_sum_sq_differences.argmin(axis=-1)
         for k in range(K):
             idx_of_members = assignments == k
             if not any(idx_of_members):
@@ -131,7 +131,9 @@ for mean, cov in zip(X_means, X_covs):
 
 fig.tight_layout()
 plt.show()
+
 # %%
+
 fig, ax = plt.subplots(1, 1, sharey=True, sharex=True, figsize=(10, 10))
 ax.plot(losses_euc[::2], label="Eucledian Distance")
 ax.plot(losses_mah[::2], label="Mahalanobis Distance")

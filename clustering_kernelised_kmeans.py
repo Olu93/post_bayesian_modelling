@@ -47,65 +47,81 @@ plt.show()
 def gaussian_kernel(X_n, X_m):
     pass
 
+
 def linear_kernel(X_n, X_m):
     dot_products = X_n[:, None, :] @ X_m.T
-    return dot_products.squeeze()    
-    
+    return dot_products.squeeze()
+
+
 def polinomial_kernel(X_n, X_m):
     pass
+
 
 # %%
 def create_assignment_matrix(K, assignments):
     N = len(assignments)
-    assignment_matrix = np.zeros((N, K, 1))  
+    assignment_matrix = np.zeros((N, K, 1))
     assignment_matrix[range(N), assignments] = 1
     return assignment_matrix
 
-def kmeans_kernelised_distance(K, X, num_iter=10, kernel_function = linear_kernel):
+
+def kmeans_kernelised_distance(K,
+                               X,
+                               num_iter=10,
+                               kernel_function=linear_kernel):
     assignments = np.random.randint(0, K, size=len(X))
     assignment_matrix = create_assignment_matrix(K, assignments).squeeze()
     mu_k = X[np.random.randint(0, len(X), size=K)]
-    counter = Counter({k:0 for k in range(K)})
+    counter = Counter({k: 0 for k in range(K)})
     counter.update(Counter(np.sort(assignments)))
     losses = np.zeros(num_iter)
+    X_K_distances = np.zeros((len(X), K))
     for i in range(num_iter):
 
-        cnts = np.array(list(counter.values()))[None, :]
+        cnts = np.array(list(counter.values()))
         #  K(x_n; x_n)
-        k_X_X = np.repeat(np.diag(kernel_function(X, X))[:, None], K, axis=1)
-        # z_m_k * K(x_n; x_m)
-        k_X_mu = kernel_function(X, mu_k)
-        normed_k_X_mu = 2 * (k_X_mu/cnts)
-
-        k_X_mu_mu = kernel_function(X, mu_k)
-        normed_k_X_mu_mu = 1 * (k_X_mu_mu/(cnts**2))
-
         
-        dist_X2X_per_class = assignment_matrix * (k_X_X - normed_k_X_mu + normed_k_X_mu_mu)
-        assignments = dist_X2X_per_class.argmin(axis=-1)
-        assignment_matrix = create_assignment_matrix(K, assignments).squeeze()
+        # z_m_k * K(x_n; x_m)
+        # k_X_mu = kernel_function(X, mu_k)
+        # normed_k_X_mu = 2 * (k_X_mu/cnts)
+
+        # k_X_mu_mu = kernel_function(X, mu_k)
+        # normed_k_X_mu_mu = 1 * (k_X_mu_mu/(cnts**2))
+
+        # dist_X2X_per_class = assignment_matrix * (k_X_X - normed_k_X_mu + normed_k_X_mu_mu)
+        # assignments = dist_X2X_per_class.argmin(axis=-1)
+        # assignment_matrix = create_assignment_matrix(K, assignments).squeeze()
         for k in range(K):
             idx_of_members = assignments == k
             if not any(idx_of_members):
                 continue
             mu_k[k] = X[idx_of_members].mean(axis=0)
-            loss_k = ((X[idx_of_members][:, None, :] - mu_k[k][None, :])**2)
-            loss_k = loss_k.sum(axis=-1)
-            loss_k = np.sqrt(loss_k)
-            loss_k = loss_k.sum()
-            losses[i] += loss_k
+            k_X = X[idx_of_members]
+            k_X_X = np.diag(kernel_function(k_X, k_X))
+            k_X_mu = 2 * kernel_function(k_X, mu_k[k, None, :]) / cnts[k]
+            k_X_mu_mu = kernel_function(k_X, mu_k[k, None, :]) / cnts[k]
+            k_dist_X2X = k_X_X - k_X_mu + k_X_mu_mu
+            X_K_distances[idx_of_members, k] = k_dist_X2X
+        assignments = X_K_distances.argmin(axis=-1)
+        # loss_k = ((X[idx_of_members][:, None, :] - mu_k[k][None, :])**2)
+        # loss_k = loss_k.sum(axis=-1)
+        # loss_k = np.sqrt(loss_k)
+        # loss_k = loss_k.sum()
+        # losses[i] += loss_k
 
     return mu_k, assignments, losses
 
 
 centroids_mah, assigments_mah, losses_mah = kmeans_kernelised_distance(4, X)
 
-plt.plot(losses_mah[::2])
+# plt.plot(losses_mah[::2])
 fig = plt.figure(figsize=(10, 10))
 ax = plt.gca()
 plot_clustering(X, assigments_mah, ax, centroids_mah)
 for mean, cov in zip(X_means, X_covs):
     plot_contour_2d(mean, cov, ax)
+
+
 # %%
 def kmeans_eucledian_distance(K, X, num_iter=10):
     assignments = np.random.randint(0, K, size=len(X))

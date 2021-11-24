@@ -80,29 +80,56 @@ def kmeans_kernelised_distance(K,
 
         cnts = np.array(list(counter.values()))
         #  K(x_n; x_n)
-        
-        # z_m_k * K(x_n; x_m)
-        # k_X_mu = kernel_function(X, mu_k)
-        # normed_k_X_mu = 2 * (k_X_mu/cnts)
+        k_X_X = np.diag(kernel_function(X, X))[:, None].squeeze()
+        # --------------
+        b = 5
+        _K = np.diag(X[0:b] @ X[0:b].T)
+        _K_nm = (2) * (X[0:b] @ mu_k[0])
+        _K_mr = (1) * mu_k[0] @ mu_k[0]
+        _Z = _K - _K_nm + _K_mr
+        _Z_sqrt = np.sqrt(_Z)
+        _Z_True = np.sqrt(np.sum((X[0:b] - mu_k[0])**2, axis=1))
+        _Z_True_2 = np.linalg.norm(X[0:b] - mu_k[0], axis=1)
+        # --------------
+        # _K = X[0, None] @ X[0, None].T
+        # _K_nm = 2 * (X[0, None] @ mu_k[0])
+        # _K_mr = mu_k[0] @ mu_k[0]
+        # _Z = _K - _K_nm + _K_mr
+        # _Z_sqrt = np.sqrt(_Z)
+        # _Z_True = np.sqrt(np.sum((X[0, None] - mu_k[0])**2))
+        # _Z_True_2 = np.linalg.norm(X[0, None] - mu_k[0])
+        # --------------
+        # _K = X[0] @ X[0]
+        # _K_nm = 2 * (X[0] @ mu_k[0])
+        # _K_mr = mu_k[0] @ mu_k[0]
+        # _Z = _K - _K_nm + _K_mr
+        # _Z_sqrt = np.sqrt(_Z)
+        # _Z_True = np.sqrt(np.sum((X[0] - mu_k[0])**2))
+        # _Z_True_2 = np.linalg.norm(X[0] - mu_k[0])
+        # --------------
+        # _K = X[1] @ X[1]
+        # _K_nm = 2 * (X[1] @ mu_k[0])
+        # _K_mr = mu_k[0] @ mu_k[0]
+        # _Z = _K - _K_nm + _K_mr
+        # _Z_sqrt = np.sqrt(_Z)
+        # _Z_True = np.sqrt(np.sum((X[1] - mu_k[0])**2))
+        # _Z_True_2 = np.linalg.norm(X[1] - mu_k[0])
+        for k in range(K):
+            idx_of_members = assignments == k
+            if not any(idx_of_members):
+                continue
+            tmp = X[idx_of_members].mean(axis=0)[None, :]
 
-        # k_X_mu_mu = kernel_function(X, mu_k)
-        # normed_k_X_mu_mu = 1 * (k_X_mu_mu/(cnts**2))
-
-        # dist_X2X_per_class = assignment_matrix * (k_X_X - normed_k_X_mu + normed_k_X_mu_mu)
-        # assignments = dist_X2X_per_class.argmin(axis=-1)
-        # assignment_matrix = create_assignment_matrix(K, assignments).squeeze()
+            k_X_mu = (2) * kernel_function(X, tmp)
+            k_X_mu_mu = (1) * kernel_function(X, tmp)
+            k_dist_X2X = k_X_X - k_X_mu + k_X_mu_mu
+            X_K_distances[:, k] = np.sqrt(k_dist_X2X)
+        assignments = X_K_distances.argmin(axis=-1)
         for k in range(K):
             idx_of_members = assignments == k
             if not any(idx_of_members):
                 continue
             mu_k[k] = X[idx_of_members].mean(axis=0)
-            k_X = X[idx_of_members]
-            k_X_X = np.diag(kernel_function(k_X, k_X))
-            k_X_mu = 2 * kernel_function(k_X, mu_k[k, None, :]) / cnts[k]
-            k_X_mu_mu = kernel_function(k_X, mu_k[k, None, :]) / cnts[k]
-            k_dist_X2X = k_X_X - k_X_mu + k_X_mu_mu
-            X_K_distances[idx_of_members, k] = k_dist_X2X
-        assignments = X_K_distances.argmin(axis=-1)
         # loss_k = ((X[idx_of_members][:, None, :] - mu_k[k][None, :])**2)
         # loss_k = loss_k.sum(axis=-1)
         # loss_k = np.sqrt(loss_k)
@@ -112,7 +139,7 @@ def kmeans_kernelised_distance(K,
     return mu_k, assignments, losses
 
 
-centroids_mah, assigments_mah, losses_mah = kmeans_kernelised_distance(4, X)
+centroids_mah, assigments_mah, losses_mah = kmeans_kernelised_distance(3, X)
 
 # plt.plot(losses_mah[::2])
 fig = plt.figure(figsize=(10, 10))

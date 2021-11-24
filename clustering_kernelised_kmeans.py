@@ -88,15 +88,11 @@ def kmeans_kernelised_distance(
         kernel_function=linear_kernel(),
 ):
     assignments = np.random.randint(0, K, size=len(X_n))
-    assignment_matrix = create_assignment_matrix(K, assignments).squeeze()
     mu_k = X_n[np.random.randint(0, len(X_n), size=K)]
-    counter = Counter({k: 0 for k in range(K)})
-    counter.update(Counter(np.sort(assignments)))
     losses = np.zeros(num_iter)
     X_K_distances = np.zeros((len(X_n), K))
     for i in range(num_iter):
 
-        cnts = np.array(list(counter.values()))
         #  K(x_n; x_n)
         k_X_X = np.diag(kernel_function(X_n, X_n))[:, None].squeeze()
 
@@ -108,11 +104,12 @@ def kmeans_kernelised_distance(
             z_m = idx_of_members[:, None]
             z_r = idx_of_members[:, None]
             k_X_mu = (2 / N_k) * (z_m.T *
-                                  kernel_function(X_n, X_n)).sum(axis=1)
+                                  k_X_X).sum(axis=1)
             k_X_mu_mu = (1 / (N_k**2)) * np.sum(
-                (z_m @ z_r.T) * kernel_function(X_n, X_n))
+                (z_m @ z_r.T) * k_X_X)
             k_dist_X2X = k_X_X - k_X_mu + k_X_mu_mu
             X_K_distances[:, k] = k_dist_X2X
+            # mu_k Can't be computed reliably
             mu_k[k] = X_n[idx_of_members].mean(axis=0)
             loss_k = ((X[idx_of_members][:, None, :] - mu_k[k][None, :])**2)
             loss_k = loss_k.sum(axis=-1)

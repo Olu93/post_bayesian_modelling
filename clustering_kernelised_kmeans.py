@@ -87,10 +87,11 @@ def kmeans_kernelised_distance(K,
             if not any(idx_of_members):
                 continue
             N_k = np.sum(idx_of_members)
-            X_m = idx_of_members[:, None] * X_n
-            X_r = idx_of_members[:, None] * X_n
-            k_X_mu = (2/N_k) * (kernel_function(X_n, X_m)).sum(axis=1)
-            k_X_mu_mu = (1/(N_k**2)) * kernel_function(X_m, X_r).sum()
+            z_m = idx_of_members[:, None]
+            z_r = idx_of_members[:, None]
+            k_X_mu = (2 / N_k) * (z_m.T * kernel_function(X_n, X_n)).sum(axis=1)
+            k_X_mu_mu = (1 / (N_k**2)) * np.sum(
+                (z_m @ z_r.T) * kernel_function(X_n, X_n))
             k_dist_X2X = k_X_X - k_X_mu + k_X_mu_mu
             X_K_distances[:, k] = k_dist_X2X
         assignments = X_K_distances.argmin(axis=-1)

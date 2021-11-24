@@ -82,14 +82,14 @@ def kmeans_kernelised_distance(K,
         #  K(x_n; x_n)
         k_X_X = np.diag(kernel_function(X_n, X_n))[:, None].squeeze()
         # --------------
-        b = 5
-        _K = np.diag(X_n[0:b] @ X_n[0:b].T)
-        _K_nm = (2) * (X_n[0:b] @ mu_k[0])
-        _K_mr = (1) * mu_k[0] @ mu_k[0]
-        _Z = _K - _K_nm + _K_mr
-        _Z_sqrt = np.sqrt(_Z)
-        _Z_True = np.sqrt(np.sum((X_n[0:b] - mu_k[0])**2, axis=1))
-        _Z_True_2 = np.linalg.norm(X_n[0:b] - mu_k[0], axis=1)
+        # b = 5
+        # _K = np.diag(X_n[0:b] @ X_n[0:b].T)
+        # _K_nm = (2) * (X_n[0:b] @ mu_k[0])
+        # _K_mr = (1) * mu_k[0] @ mu_k[0]
+        # _Z = _K - _K_nm + _K_mr
+        # _Z_sqrt = np.sqrt(_Z)
+        # _Z_True = np.sqrt(np.sum((X_n[0:b] - mu_k[0])**2, axis=1))
+        # _Z_True_2 = np.linalg.norm(X_n[0:b] - mu_k[0], axis=1)
         # --------------
         # _K = X[0, None] @ X[0, None].T
         # _K_nm = 2 * (X[0, None] @ mu_k[0])
@@ -118,12 +118,13 @@ def kmeans_kernelised_distance(K,
             idx_of_members = assignments == k
             if not any(idx_of_members):
                 continue
-            X_m = X_n[idx_of_members]
-            N_k = len(X_m)
-            k_X_mu = (2/N_k) * kernel_function(X_n, X_m).sum(axis=1)
-            k_X_mu_mu = (1/(N_k**2)) * kernel_function(X_n, X_m).sum(axis=1)
+            N_k = np.sum(idx_of_members)
+            X_m = idx_of_members[:, None] * X_n
+            X_r = idx_of_members[:, None] * X_n
+            k_X_mu = (2/N_k) * (kernel_function(X_n, X_m)).sum(axis=1)
+            k_X_mu_mu = (1/(N_k**2)) * kernel_function(X_m, X_r).sum()
             k_dist_X2X = k_X_X - k_X_mu + k_X_mu_mu
-            X_K_distances[:, k] = np.sqrt(k_dist_X2X)
+            X_K_distances[:, k] = k_dist_X2X
         assignments = X_K_distances.argmin(axis=-1)
         for k in range(K):
             idx_of_members = assignments == k
@@ -139,7 +140,7 @@ def kmeans_kernelised_distance(K,
     return mu_k, assignments, losses
 
 
-centroids_mah, assigments_mah, losses_mah = kmeans_kernelised_distance(3, X)
+centroids_mah, assigments_mah, losses_mah = kmeans_kernelised_distance(5, X)
 
 # plt.plot(losses_mah[::2])
 fig = plt.figure(figsize=(10, 10))

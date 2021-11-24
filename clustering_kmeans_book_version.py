@@ -44,7 +44,7 @@ plt.show()
 
 
 # %%
-
+# Follows: Rogers, Simon, and Mark Girolami. A First Course in Machine Learning, Second Edition. 2nd ed. Chapman & Hall/CRC, 2016. https://nl1lib.org/book/11571143/9a0735.
 def create_assignment_matrix(K, N, assignments):
     assignment_matrix = np.zeros((N, K, 1))  
     assignment_matrix[range(N), assignments] = 1

@@ -73,12 +73,28 @@ def polinomial_kernel(gamma=1):
     return kernel
 
 # %%
+# Follows: Rogers, Simon, and Mark Girolami. A First Course in Machine Learning, Second Edition. 2nd ed. Chapman & Hall/CRC, 2016. https://nl1lib.org/book/11571143/9a0735.
+def compute_euc_distance(X, mu_k):
+    X_differences = X[:, None, :] - mu_k
+    X_sq_differences = X_differences**2
+    X_sum_sq_differences = X_sq_differences.sum(axis=-1)
+    X_root_sum_sq_differences = np.sqrt(X_sum_sq_differences)
+    return X_root_sum_sq_differences
+
+
 def create_assignment_matrix(K, assignments):
     N = len(assignments)
     assignment_matrix = np.zeros((N, K, 1))
     assignment_matrix[range(N), assignments] = 1
     return assignment_matrix
 
+def compute_mus(K, X, assignment_matrix):
+    # assignment_matrix: N x K x 1
+    # N x K x X_ft
+    X_K = np.repeat(X[:, None, :], K, axis=1)  
+    new_mu = (assignment_matrix * X_K).sum(axis=0) / assignment_matrix.sum(
+        axis=0)
+    return new_mu
 
 def kmeans_kernelised_distance(
         K,
@@ -88,44 +104,57 @@ def kmeans_kernelised_distance(
 ):
     assignments = np.random.randint(0, K, size=len(X_n))
     # N x K x 1
-    assignment_matrix = create_assignment_matrix(K, assignments).squeeze()
+    assignment_matrix = create_assignment_matrix(K, assignments)
     mu_k = X_n[np.random.randint(0, len(X_n), size=K)]
     counter = Counter({k: 0 for k in range(K)})
     counter.update(Counter(np.sort(assignments)))
     losses = np.zeros(num_iter)
-    X_K_distances = np.zeros((len(X_n), K))
     for i in range(num_iter):
 
-        cnts = np.array(list(counter.values()))
-        #  K(x_n; x_n)
-        k_X_X = np.diag(kernel_function(X_n, X_n))[:, None].squeeze()
+        cnts = np.array(list(counter.values()))[:, None]
+        
+        # K x N --> Real: K x 1 x N
+        z_cm = assignment_matrix.squeeze().T[:, None, :]
+        # N x N --> Real: N x N
+        c_X_X = kernel_function(X_n, X_n)
+        # N --> Real: N x 1
+        knn = np.diag(c_X_X)[None, :]
+        
+        # K x N x N 
+        z_cmK = z_cm * c_X_X
+        # K x N
+        sum_z_cmK = z_cmK.sum(axis=-1)
+        # K x N
+        normed_sum_z_cK = (2/cnts) * sum_z_cmK 
 
-        for k in range(K):
-            idx_of_members = assignments == k
-            if not any(idx_of_members):
-                continue
-            N_k = np.sum(idx_of_members)
-            z_m = idx_of_members[:, None]
-            z_r = idx_of_members[:, None]
-            k_X_mu = (2 / N_k) * (z_m.T *
-                                  kernel_function(X_n, X_n)).sum(axis=1)
-            k_X_mu_mu = (1 / (N_k**2)) * np.sum(
-                (z_m @ z_r.T) * kernel_function(X_n, X_n))
-            k_dist_X2X = k_X_X - k_X_mu + k_X_mu_mu
-            X_K_distances[:, k] = k_dist_X2X
-            mu_k[k] = X_n[idx_of_members].mean(axis=0)
-            loss_k = ((X[idx_of_members][:, None, :] - mu_k[k][None, :])**2)
-            loss_k = loss_k.sum(axis=-1)
-            loss_k = np.sqrt(loss_k)
-            loss_k = loss_k.sum()
-            losses[i] += loss_k
-        assignments = X_K_distances.argmin(axis=-1)
+        # K x N --> Real: K x N x 1
+        z_kr = np.transpose(z_cm, axes=(0,2,1))
+        # K x N x N 
+        z_cmcrK = z_cm * z_kr * c_X_X
+        # K --> Real: K x 1
+        sum_z_cmcrK = z_cmcrK.sum(axis=(-1,-2))[:, None]
+        # K x 1
+        normed_sum_z_cmcrK = (1/(cnts**2)) * sum_z_cmcrK 
+
+        # K x N
+        XnK_distances = knn - normed_sum_z_cK + normed_sum_z_cmcrK
+        
+        # N x 1 
+        assignments = XnK_distances.argmin(axis=0)
+
+        assignment_matrix = create_assignment_matrix(K, assignments)
+        # mu_k Can't be computed reliably because we don't know xn -> φ(xn)
+        new_mus = compute_mus(K, X, assignment_matrix)
+        mu_k[~np.isnan(new_mus)] = new_mus[~np.isnan(new_mus)]
+        least_squares = compute_euc_distance(X, mu_k)
+        losses[i] = (least_squares * assignment_matrix.squeeze()).sum()
+
 
     return mu_k, assignments, losses
 
 
 centroids_mah, assigments_mah, losses_mah = kmeans_kernelised_distance(
-    5, X, kernel_function=gaussian_kernel())
+    3, X, kernel_function=gaussian_kernel())
 
 plt.plot(losses_mah[::2])
 fig = plt.figure(figsize=(10, 10))

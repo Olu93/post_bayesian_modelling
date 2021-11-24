@@ -72,7 +72,6 @@ def polinomial_kernel(gamma=1):
 
     return kernel
 
-
 # %%
 def create_assignment_matrix(K, assignments):
     N = len(assignments)
@@ -88,29 +87,34 @@ def kmeans_kernelised_distance(
         kernel_function=linear_kernel(),
 ):
     assignments = np.random.randint(0, K, size=len(X_n))
+    # N x K x 1
+    assignment_matrix = create_assignment_matrix(K, assignments).squeeze()
     mu_k = X_n[np.random.randint(0, len(X_n), size=K)]
+    counter = Counter({k: 0 for k in range(K)})
+    counter.update(Counter(np.sort(assignments)))
     losses = np.zeros(num_iter)
     X_K_distances = np.zeros((len(X_n), K))
     for i in range(num_iter):
 
+        cnts = np.array(list(counter.values()))
         #  K(x_n; x_n)
-        k_X_X = kernel_function(X_n, X_n)
-        k_Xnn = np.diag(k_X_X)[:, None].squeeze()
+        k_X_X = np.diag(kernel_function(X_n, X_n))[:, None].squeeze()
 
         for k in range(K):
-            is_member = assignments == k
-            if not any(is_member):
+            idx_of_members = assignments == k
+            if not any(idx_of_members):
                 continue
-            N_k = np.sum(is_member)
-            z_m = is_member[:, None]
-            z_r = is_member[:, None]
-            k_Xnm = (2 / N_k) * (z_m.T * k_X_X).sum(axis=1)
-            k_Xmr = (1 / (N_k**2)) * np.sum((z_m @ z_r.T) * k_X_X)
-            k_dist_X2X = k_Xnn - k_Xnm + k_Xmr
+            N_k = np.sum(idx_of_members)
+            z_m = idx_of_members[:, None]
+            z_r = idx_of_members[:, None]
+            k_X_mu = (2 / N_k) * (z_m.T *
+                                  kernel_function(X_n, X_n)).sum(axis=1)
+            k_X_mu_mu = (1 / (N_k**2)) * np.sum(
+                (z_m @ z_r.T) * kernel_function(X_n, X_n))
+            k_dist_X2X = k_X_X - k_X_mu + k_X_mu_mu
             X_K_distances[:, k] = k_dist_X2X
-            # mu_k Can't be computed reliably because we don't know xn -> φ(xn)
-            mu_k[k] = X_n[is_member].mean(axis=0)
-            loss_k = ((X[is_member][:, None, :] - mu_k[k][None, :])**2)
+            mu_k[k] = X_n[idx_of_members].mean(axis=0)
+            loss_k = ((X[idx_of_members][:, None, :] - mu_k[k][None, :])**2)
             loss_k = loss_k.sum(axis=-1)
             loss_k = np.sqrt(loss_k)
             loss_k = loss_k.sum()
@@ -121,7 +125,7 @@ def kmeans_kernelised_distance(
 
 
 centroids_mah, assigments_mah, losses_mah = kmeans_kernelised_distance(
-    5, X, kernel_function=linear_kernel())
+    5, X, kernel_function=gaussian_kernel())
 
 plt.plot(losses_mah[::2])
 fig = plt.figure(figsize=(10, 10))
@@ -154,11 +158,7 @@ for mean, cov in zip(X_means, X_covs):
     plot_contour_2d(mean, cov, ax)
 # %%
 num_rows = 5
-fig, axes = plt.subplots(num_rows,
-                         3,
-                         sharey=True,
-                         sharex=True,
-                         figsize=(15, num_rows * 5))
+fig, axes = plt.subplots(num_rows, 3, sharey=True, sharex=True, figsize=(15, num_rows*5))
 faxes = axes.flatten()
 K = 4
 for rnum, ax_row in enumerate(axes):
@@ -180,7 +180,7 @@ for rnum, ax_row in enumerate(axes):
     ax.set_title(f"{rnum}-order Polynomial Kernel")
     ax = ax_row[2]
     centroids, assigments, losses = kmeans_kernelised_distance(
-        K, X, kernel_function=gaussian_kernel(1 / (num_rows - rnum)))
+        K, X, kernel_function=gaussian_kernel(1/(num_rows-rnum)))
     plot_clustering(X, assigments, ax)
     for mean, cov in zip(X_means, X_covs):
         plot_contour_2d(mean, cov, ax)
@@ -200,20 +200,21 @@ for rnum in range(5):
     centroids, assigments, losses = kmeans_kernelised_distance(
         K, X, kernel_function=linear_kernel())
     ax.plot(losses, label="Linear Kernel")
-    ax.legend()
+    ax.legend()    
     ax.set_title(f"Linear Kernel")
     ax = axes[1]
     centroids, assigments, losses = kmeans_kernelised_distance(
         K, X, kernel_function=polinomial_kernel(rnum))
     ax.plot(losses, label=f"{rnum}-order Polynomial Kernel")
-    ax.legend()
+    ax.legend()    
     ax.set_title(f"Polynomial Kernel")
     ax = axes[2]
     centroids, assigments, losses = kmeans_kernelised_distance(
-        K, X, kernel_function=gaussian_kernel(1 / (num_rows - rnum)))
+        K, X, kernel_function=gaussian_kernel(1/(num_rows-rnum)))
     ax.plot(losses, label=f"Gauss Kernel with γ={1}/{num_rows-rnum}")
-    ax.legend()
+    ax.legend()    
     ax.set_title(f"Gauss Kernel")
+    
 
 fig.tight_layout()
 plt.show()

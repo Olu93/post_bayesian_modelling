@@ -185,7 +185,6 @@ plt.show()
 plt.hist(P_c[:, 3])
 plt.show()
 
-
 # %%
 def observed_data_classification_two_features(num_data,
                                               mean_data_0,
@@ -221,6 +220,53 @@ cov_data = np.array([[3, init_cov], [init_cov, 3]])
 mean_data = np.array([1, 1])
 X, y, means, covs = observed_data_classification_two_features(
     1000, mean_data, cov_data)
+plt.hist(y, bins=len(np.unique(y)))
+plt.show()
+plt.hist(P_c[:, 3])
+plt.show()
+fig = plt.figure(figsize=(7, 7))
+ax = plt.gca()
+plot_countours_and_points(ax, X, y, means, covs)
+plt.show()
+
+# %%
+def observed_data_classification_two_features_nonlinear(num_data,
+                                              mean_data_0,
+                                              cov_data_0,
+                                              seed=42):
+    np.random.seed(seed)
+    rotate_matrix = np.identity(
+        2) + np.ones_like(cov_data_0) * (np.identity(2) - 1)
+
+    mean_data_1 = np.copy(mean_data_0)
+    cov_data_1 = cov_data_0/0.9
+    mean_data_2 = np.copy(mean_data_0) 
+    mean_data_2[1] += 7
+    cov_data_2 = (cov_data_0 / 2) * rotate_matrix  
+
+
+    X_0 = np.random.multivariate_normal(mean_data_0, cov_data_0, size=num_data)
+    X_1 = np.random.multivariate_normal(mean_data_1, cov_data_1, size=num_data)
+    X_1 = X_1 @ (mean_data.sum() * np.eye(2))
+    inner_circle = np.sqrt(np.square(mean_data).sum())*2
+    points_circle = np.sqrt(np.square(X_1).sum(axis=1))
+    X_1 = X_1[points_circle > inner_circle]
+    X_2 = np.random.multivariate_normal(mean_data_2, cov_data_2, size=num_data)
+    y_0 = np.ones(len(X_0))[:, None] * 1
+    y_1 = np.ones(len(X_1))[:, None] * 2
+    y_2 = np.ones(len(X_2))[:, None] * 3
+    X = np.vstack([X_0, X_1, X_2])
+    y = np.vstack([y_0, y_1, y_2]).astype(int)
+    means = np.array([mean_data_0, mean_data_1, mean_data_2])
+    covs = np.array([cov_data_0, cov_data_1, cov_data_2])
+    return X, y, means, covs
+
+
+init_cov = 2
+cov_data = np.array([[3, init_cov], [init_cov, 3]])
+mean_data = np.array([1, 1])
+X, y, means, covs = observed_data_classification_two_features_nonlinear(
+    500, mean_data, cov_data)
 plt.hist(y, bins=len(np.unique(y)))
 plt.show()
 plt.hist(P_c[:, 3])

@@ -81,39 +81,7 @@ def kmeans_kernelised_distance(K,
         cnts = np.array(list(counter.values()))
         #  K(x_n; x_n)
         k_X_X = np.diag(kernel_function(X_n, X_n))[:, None].squeeze()
-        # --------------
-        # b = 5
-        # _K = np.diag(X_n[0:b] @ X_n[0:b].T)
-        # _K_nm = (2) * (X_n[0:b] @ mu_k[0])
-        # _K_mr = (1) * mu_k[0] @ mu_k[0]
-        # _Z = _K - _K_nm + _K_mr
-        # _Z_sqrt = np.sqrt(_Z)
-        # _Z_True = np.sqrt(np.sum((X_n[0:b] - mu_k[0])**2, axis=1))
-        # _Z_True_2 = np.linalg.norm(X_n[0:b] - mu_k[0], axis=1)
-        # --------------
-        # _K = X[0, None] @ X[0, None].T
-        # _K_nm = 2 * (X[0, None] @ mu_k[0])
-        # _K_mr = mu_k[0] @ mu_k[0]
-        # _Z = _K - _K_nm + _K_mr
-        # _Z_sqrt = np.sqrt(_Z)
-        # _Z_True = np.sqrt(np.sum((X[0, None] - mu_k[0])**2))
-        # _Z_True_2 = np.linalg.norm(X[0, None] - mu_k[0])
-        # --------------
-        # _K = X[0] @ X[0]
-        # _K_nm = 2 * (X[0] @ mu_k[0])
-        # _K_mr = mu_k[0] @ mu_k[0]
-        # _Z = _K - _K_nm + _K_mr
-        # _Z_sqrt = np.sqrt(_Z)
-        # _Z_True = np.sqrt(np.sum((X[0] - mu_k[0])**2))
-        # _Z_True_2 = np.linalg.norm(X[0] - mu_k[0])
-        # --------------
-        # _K = X[1] @ X[1]
-        # _K_nm = 2 * (X[1] @ mu_k[0])
-        # _K_mr = mu_k[0] @ mu_k[0]
-        # _Z = _K - _K_nm + _K_mr
-        # _Z_sqrt = np.sqrt(_Z)
-        # _Z_True = np.sqrt(np.sum((X[1] - mu_k[0])**2))
-        # _Z_True_2 = np.linalg.norm(X[1] - mu_k[0])
+
         for k in range(K):
             idx_of_members = assignments == k
             if not any(idx_of_members):

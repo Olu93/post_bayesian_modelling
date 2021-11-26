@@ -129,11 +129,13 @@ def compute_posteriors(X, pis, mus, covs):
 
 
 def expectation(X, posteriors):
-    p_qnk = [v["pi"] * v["posterior"].pdf(X) for k, v in posteriors.items()]
+    joints = [v["pi"] * v["posterior"].pdf(X) for k, v in posteriors.items()]
     # K x N
-    p_qnk = np.array(p_qnk)
+    p_qnk_numerator = np.array(joints)
+    # 1 x N
+    p_qnk_denominator = p_qnk_numerator.sum(axis=0)[None, :]
     # K x N
-    p_qnk = p_qnk / p_qnk.sum(axis=-1)[:, None]
+    p_qnk = p_qnk_numerator / p_qnk_denominator
     return p_qnk
 
 
@@ -146,7 +148,7 @@ def maximization(N, X, q_nk):
 
 
 def em_algorithm(K, X, num_iter=10):
-    N = len(X)
+    N, F = X.shape
     # assignments = np.random.randint(0, K, size=len(X))
     # q_nk = create_assignment_matrix(K, N, assignments)
     q_nk = np.ones((K, N)) / K
@@ -154,7 +156,7 @@ def em_algorithm(K, X, num_iter=10):
     assignments = np.random.randint(0, K, size=len(X))
     assignment_matrix = create_assignment_matrix(K, N, assignments)
     X_K = np.repeat(X[:, None, :], K, axis=1)
-    mus = (assignment_matrix * X_K).sum(axis=0) / assignment_matrix.sum(axis=0)
+    mus = np.random.uniform(-5, 5, size=(K, F))
     covs = update_covs(X, mus, q_nk)
     posteriors = compute_posteriors(X, pis, mus, covs)
     losses = np.zeros(num_iter)
@@ -165,13 +167,13 @@ def em_algorithm(K, X, num_iter=10):
     return posteriors, q_nk, losses
 
 
-posteriors, q_nk, losses = em_algorithm(5, train_X)
+posteriors, q_nk, losses = em_algorithm(3, train_X, num_iter=100)
 
 fig = plt.figure(figsize=(10, 10))
 ax = plt.gca()
 
-X = np.linspace(-2, 4, 1000)
-Y = np.linspace(4, 7, 1000)
+X = np.linspace(-5, 10, 1000)
+Y = np.linspace(-5, 10, 1000)
 X, Y = np.meshgrid(X, Y)
 flat_data = np.array([X.flatten(), Y.flatten()]).T
 

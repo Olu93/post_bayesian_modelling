@@ -112,6 +112,78 @@ def update_covs(X, mus, q_nk):
     covs = weighted_sum_features / q_k
     return covs
 
+def update_covs_independence(X, mus, q_nk):
+    # Start
+    # q_nk  : K x N
+    # mus   : K x F
+    # X     : N x F
+
+    N = len(X)
+
+    # K x N x 1
+    tmp = q_nk[:, :, None]
+
+    # N x 1 x F
+    new_X = X[:, None, :]
+    # N x K x F
+    diffs = new_X - mus
+    # K x N x F
+    k_diffs = np.transpose(diffs, axes=(1, 0, 2))
+
+    # K x N x F = K x N x 1 * K x N x F
+    sq_diffs = tmp * (k_diffs ** 2)
+
+    # K x F x 1
+    weigted_sum_sq_diffs = sq_diffs.sum(axis=1)[:, None]
+
+    # 1 x F x F
+    independence_covs = np.eye(X.shape[1])[None, :, :] 
+
+    # K x 1 x 1
+    q_k = q_nk.sum(axis=-1)[:, None, None]
+    
+    # K x F x F = (K x F x 1) @ (1 x F x F) / (K x 1 x 1)
+    covs = (weigted_sum_sq_diffs * independence_covs) / q_k
+    return covs
+
+def update_covs_isotropic(X, mus, q_nk):
+    # Start
+    # q_nk  : K x N
+    # mus   : K x F
+    # X     : N x F
+
+    N = len(X)
+
+    # K x N x 1
+    tmp = q_nk[:, :, None]
+
+    # N x 1 x F
+    new_X = X[:, None, :]
+    # N x K x F
+    diffs = new_X - mus
+    # K x N x F
+    k_diffs = np.transpose(diffs, axes=(1, 0, 2))
+
+    # K x 1 x 1
+    iso_var = np.var((k_diffs ** 2).unsqueeze(), axis=-1)[:, None, None]
+
+    # K x N x 1 = K x N x 1 * K x 1 x 1
+    sq_diffs = tmp * iso_var
+
+    # K x 1 x 1
+    weigted_sum_sq_diffs = sq_diffs.sum(axis=1)[:, None]
+
+    # 1 x F x F
+    independence_covs = np.eye(X.shape[1])[None, :, :] 
+
+    # K x 1 x 1
+    q_k = q_nk.sum(axis=-1)[:, None, None]
+    
+    # K x F x F = (K x 1 x 1) @ (1 x F x F) / (K x 1 x 1)
+    covs = (weigted_sum_sq_diffs * independence_covs) / q_k
+    return covs
+
+
 
 # q_nk: Posterior of x being assigned to a class
 def compute_posteriors(X, pis, mus, covs):
@@ -139,7 +211,7 @@ def expectation(X, posteriors):
     return p_qnk
 
 
-def maximization(N, X, q_nk):
+def maximization(N, X, q_nk, update_covs=update_covs):
     pis = update_pis(N, q_nk)
     mus = update_mus(X, q_nk)
     covs = update_covs(X, mus, q_nk)
@@ -147,28 +219,37 @@ def maximization(N, X, q_nk):
     return posteriors
 
 
-def em_algorithm(K, X, num_iter=10):
+def em_algorithm(K, X, num_iter=10, restriction_level=0):
+    update_covs_func = update_covs
+    if restriction_level == 1:
+        update_covs_func = update_covs_independence
+    if restriction_level == 2:
+        update_covs_func = update_covs_isotropic
+    
     N, F = X.shape
-    # assignments = np.random.randint(0, K, size=len(X))
-    # q_nk = create_assignment_matrix(K, N, assignments)
+    losses = np.zeros(num_iter)
+
+    # Initialisation
     q_nk = np.ones((K, N)) / K
-    pis = update_pis(N, q_nk)
     assignments = np.random.randint(0, K, size=len(X))
     assignment_matrix = create_assignment_matrix(K, N, assignments)
     X_K = np.repeat(X[:, None, :], K, axis=1)
-    mus = np.random.uniform(-5, 5, size=(K, F))
-    covs = update_covs(X, mus, q_nk)
+    mus = (assignment_matrix * X_K).sum(axis=0) / assignment_matrix.sum(axis=0)
+    pis = update_pis(N, q_nk)
+    covs = update_covs_func(X, mus, q_nk)
     posteriors = compute_posteriors(X, pis, mus, covs)
-    losses = np.zeros(num_iter)
+    # Run EM
     for i in range(num_iter):
         q_nk = expectation(X, posteriors)
-        posteriors = maximization(N, X, q_nk)
+        posteriors = maximization(N, X, q_nk, update_covs=update_covs_func)
 
     return posteriors, q_nk, losses
 
 
 posteriors, q_nk, losses = em_algorithm(3, train_X, num_iter=100)
-
+hard_assignments = q_nk.T.argmax(axis=1)
+hard_assignments
+# %%
 fig = plt.figure(figsize=(10, 10))
 ax = plt.gca()
 
@@ -178,9 +259,16 @@ X, Y = np.meshgrid(X, Y)
 flat_data = np.array([X.flatten(), Y.flatten()]).T
 
 for c, class_items in posteriors.items():
-    print(class_items['posterior'].mean)
-    print(class_items['posterior'].cov)
     Z = class_items['posterior'].pdf(flat_data).reshape(X.shape)
     CS = ax.contour(X, Y, Z)
     ax.clabel(CS, inline=True, fontsize=10)
+
+    members = (hard_assignments == c).flatten()
+    if np.any(members):
+        X_likelihoods = q_nk.T[members]
+        X_members = train_X[members]
+        ax.scatter(X_members[:, 0], X_members[:, 1])
 plt.show()
+
+# %%
+

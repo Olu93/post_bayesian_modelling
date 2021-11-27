@@ -112,6 +112,7 @@ def update_covs(X, mus, q_nk):
     covs = weighted_sum_features / q_k
     return covs
 
+
 def update_covs_independence(X, mus, q_nk):
     # Start
     # q_nk  : K x N
@@ -131,20 +132,21 @@ def update_covs_independence(X, mus, q_nk):
     k_diffs = np.transpose(diffs, axes=(1, 0, 2))
 
     # K x N x F = K x N x 1 * K x N x F
-    sq_diffs = tmp * (k_diffs ** 2)
+    sq_diffs = tmp * (k_diffs**2)
 
     # K x F x 1
     weigted_sum_sq_diffs = sq_diffs.sum(axis=1)[:, None]
 
     # 1 x F x F
-    independence_covs = np.eye(X.shape[1])[None, :, :] 
+    independence_covs = np.eye(X.shape[1])[None, :, :]
 
     # K x 1 x 1
     q_k = q_nk.sum(axis=-1)[:, None, None]
-    
+
     # K x F x F = (K x F x 1) @ (1 x F x F) / (K x 1 x 1)
     covs = (weigted_sum_sq_diffs * independence_covs) / q_k
     return covs
+
 
 def update_covs_isotropic(X, mus, q_nk):
     # Start
@@ -152,7 +154,7 @@ def update_covs_isotropic(X, mus, q_nk):
     # mus   : K x F
     # X     : N x F
 
-    N = len(X)
+    N, F = X.shape
 
     # K x N x 1
     tmp = q_nk[:, :, None]
@@ -165,24 +167,22 @@ def update_covs_isotropic(X, mus, q_nk):
     k_diffs = np.transpose(diffs, axes=(1, 0, 2))
 
     # K x 1 x 1
-    iso_var = np.var((k_diffs ** 2).unsqueeze(), axis=-1)[:, None, None]
-
+    iso_var = (k_diffs**2).var(axis=(-1,-2))[:, None, None]/(N*F)
     # K x N x 1 = K x N x 1 * K x 1 x 1
-    sq_diffs = tmp * iso_var
+    weighted_iso_vars = tmp * iso_var
 
     # K x 1 x 1
-    weigted_sum_sq_diffs = sq_diffs.sum(axis=1)[:, None]
+    weigted_sum_iso_vars = weighted_iso_vars.sum(axis=1)[:, None]
 
     # 1 x F x F
-    independence_covs = np.eye(X.shape[1])[None, :, :] 
+    identity_covs = np.eye(F)[None, :, :]
 
     # K x 1 x 1
     q_k = q_nk.sum(axis=-1)[:, None, None]
-    
-    # K x F x F = (K x 1 x 1) @ (1 x F x F) / (K x 1 x 1)
-    covs = (weigted_sum_sq_diffs * independence_covs) / q_k
-    return covs
 
+    # K x F x F = (K x 1 x 1) @ (1 x F x F) / (K x 1 x 1)
+    covs = (weigted_sum_iso_vars * identity_covs) / q_k
+    return covs
 
 
 # q_nk: Posterior of x being assigned to a class
@@ -225,7 +225,7 @@ def em_algorithm(K, X, num_iter=10, restriction_level=0):
         update_covs_func = update_covs_independence
     if restriction_level == 2:
         update_covs_func = update_covs_isotropic
-    
+
     N, F = X.shape
     losses = np.zeros(num_iter)
 
@@ -246,10 +246,14 @@ def em_algorithm(K, X, num_iter=10, restriction_level=0):
     return posteriors, q_nk, losses
 
 
-posteriors, q_nk, losses = em_algorithm(3, train_X, num_iter=100)
+posteriors, q_nk, losses = em_algorithm(
+    3,
+    train_X,
+    num_iter=100,
+    restriction_level=2,
+)
 hard_assignments = q_nk.T.argmax(axis=1)
-hard_assignments
-# %%
+# hard_assignments
 fig = plt.figure(figsize=(10, 10))
 ax = plt.gca()
 
@@ -271,4 +275,29 @@ for c, class_items in posteriors.items():
 plt.show()
 
 # %%
+fig, axes = plt.subplots(3,1,figsize=(10, 25), sharex=True, sharey=True)
 
+X = np.linspace(-5, 10, 1000)
+Y = np.linspace(-5, 10, 1000)
+X, Y = np.meshgrid(X, Y)
+flat_data = np.array([X.flatten(), Y.flatten()]).T
+
+for idx, ax in enumerate(axes):
+    posteriors, q_nk, losses = em_algorithm(
+        3,
+        train_X,
+        num_iter=100,
+        restriction_level=idx,
+    )
+    for c, class_items in posteriors.items():
+        Z = class_items['posterior'].pdf(flat_data).reshape(X.shape)
+        CS = ax.contour(X, Y, Z)
+        ax.clabel(CS, inline=True, fontsize=10)
+        ax.set_title(f"Restriction Level {idx}")
+        members = (hard_assignments == c).flatten()
+        if np.any(members):
+            X_likelihoods = q_nk.T[members]
+            X_members = train_X[members]
+            ax.scatter(X_members[:, 0], X_members[:, 1])
+fig.tight_layout()
+plt.show()

@@ -1,4 +1,5 @@
 # %%
+# Follows: Rogers, Simon, and Mark Girolami. A First Course in Machine Learning, Second Edition. 2nd ed. Chapman & Hall/CRC, 2016. https://nl1lib.org/book/11571143/9a0735.
 from sklearn import datasets
 import abc
 import matplotlib.pyplot as plt
@@ -29,32 +30,6 @@ data_X
 normed_X = (data_X - data_X.mean()) / data_X.std()
 normed_X
 
-# def compute_x_cov(exp_tau, w_M):
-#     # exp_tau = 1 x 1
-#     # w_M = M x D
-#     D = w_M.shape[1]
-#     # D x D
-#     I_D = np.eye(D)
-
-#     # DxD = DxD + 1x1 + DxD := Σ[MxDx1 @ Mx1xD|M]
-#     cov_x_n = I_D + exp_tau * (w_M[:, :, None] @ w_M[:, None, :]).sum(axis=0)
-
-#     # 1xDxD
-#     return np.linalg.inv(cov_x_n)[None, :,:]
-
-# def compute_w_cov(exp_tau, x_N):
-#     # exp_tau = 1 x 1
-#     # x_N = N x D
-#     D = x_N.shape[1]
-#     # D x D
-#     I_D = np.eye(D)
-
-#     # DxD = DxD + 1x1 + DxD := Σ[MxDx1 @ Mx1xD|M]
-#     cov_x_n = I_D + exp_tau * (x_N[:, :, None] @ x_N[:, None, :]).sum(axis=0)
-
-
-#     # 1xDxD
-#     return np.linalg.inv(cov_x_n)[None, :,:]
 # %%
 # Σ_xn
 def compute_sigma_x(N, exp_tau, exp_cov_w):
@@ -188,7 +163,7 @@ def probablistic_principal_component_analysis(Y, dim=3, a=1, b=1):
     # MxDxD
     exp_ww = I_D + np.einsum('ijk,ikj->ijk', exp_w[:, None], exp_w[:, None])
 
-    for i in range(3):
+    for i in range(2):
         sigma_x = compute_sigma_x(N, exp_tau, exp_ww)
         mu_x = compute_mu_x(Y, exp_tau, sigma_x, exp_w)
 
@@ -238,4 +213,7 @@ for cls in data_y.unique():
     ax2.view_init(30, 45)
 plt.show()
 Axes3D
+# %%
+from sklearn.decomposition import ProbabilisticPCA
+
 # %%

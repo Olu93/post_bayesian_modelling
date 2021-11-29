@@ -56,29 +56,32 @@ normed_X
 #     return result 
 
 
+# def compute_x_cov(exp_tau, w_M):
+#     # exp_tau = 1 x 1
+#     # w_M = M x D
+#     D = w_M.shape[1]
+#     # D x D
+#     I_D = np.eye(D)
+
+#     # DxD = DxD + 1x1 + DxD := Σ[MxDx1 @ Mx1xD|M]
+#     cov_x_n = I_D + exp_tau * (w_M[:, :, None] @ w_M[:, None, :]).sum(axis=0)
+    
+#     # 1xDxD
+#     return np.linalg.inv(cov_x_n)[None, :,:]
+
+# def compute_w_cov(exp_tau, x_N):
+#     # exp_tau = 1 x 1
+#     # x_N = N x D
+#     D = x_N.shape[1]
+#     # D x D
+#     I_D = np.eye(D)
+
+#     # DxD = DxD + 1x1 + DxD := Σ[MxDx1 @ Mx1xD|M]
+#     cov_x_n = I_D + exp_tau * (x_N[:, :, None] @ x_N[:, None, :]).sum(axis=0)
+    
+#     # 1xDxD
+#     return np.linalg.inv(cov_x_n)[None, :,:]
 # %%
-def compute_x_cov(D, exp_tau, w_M):
-    # exp_tau = 1 x 1
-    # w_M = M x D
-
-    # D x D
-    I_D = np.eye(D)
-
-    # DxD = DxD + 1x1 + DxD := Σ[MxDx1 @ Mx1xD|M]
-    cov_x_n = I_D + exp_tau * (w_M[:, :, None] @ w_M[:, None, :]).sum(axis=0)
-    return np.linalg.inv(cov_x_n)
-
-def compute_w_cov(D, exp_tau, x_N):
-    # exp_tau = 1 x 1
-    # w_M = M x D
-
-    # D x D
-    I_D = np.eye(D)
-
-    # DxD = DxD + 1x1 + DxD := Σ[MxDx1 @ Mx1xD|M]
-    cov_x_n = I_D + exp_tau * (x_N[:, :, None] @ x_N[:, None, :]).sum(axis=0)
-    return np.linalg.inv(cov_x_n)
-
 def compute_mu_x(X):
     # X: NxD
     # Dx1

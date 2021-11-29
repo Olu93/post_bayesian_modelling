@@ -28,34 +28,6 @@ data_X
 normed_X = (data_X - data_X.mean()) / data_X.std()
 normed_X
 
-# def compute_x_mu(Y, exp_tau, cov_x_N, exp_w_M):
-#     # Y: N x M
-#     # exp_w_M: D x 1
-#     # exp_tau = 1 x 1
-#     # exp_w_M: M x D
-#     # cov_x_n: D x D
-
-#     # NxD => Σ[NxMx1 @ 1x1xD|M]  
-#     # -- Summation over M is handled by @-multiplication
-#     y_nm_times_wm = (Y @ exp_w_M.T[None, :, :]).sum(axis=1)
-#     # NxDxD => 1x1 * DxD @ NxDx1
-#     result = exp_tau * cov_x_N @ y_nm_times_wm[:, :, None]
-#     return result 
-# def compute_w_mu(Y, exp_tau, cov_w_M, exp_x_N):
-#     # Y: N x M
-#     # exp_w_M: D x 1
-#     # exp_tau = 1 x 1
-#     # exp_w_M: M x D
-#     # cov_x_n: D x D
-
-#     # NxD => Σ[NxMx1 @ 1x1xD|M]  
-#     # -- Summation over M is handled by @-multiplication
-#     y_nm_times_wm = (Y @ exp_x_N.T[None, :, :]).sum(axis=1)
-#     # NxDxD => 1x1 * DxD @ NxDx1
-#     result = exp_tau * cov_w_M @ y_nm_times_wm[:, :, None]
-#     return result 
-
-
 # def compute_x_cov(exp_tau, w_M):
 #     # exp_tau = 1 x 1
 #     # w_M = M x D
@@ -65,7 +37,7 @@ normed_X
 
 #     # DxD = DxD + 1x1 + DxD := Σ[MxDx1 @ Mx1xD|M]
 #     cov_x_n = I_D + exp_tau * (w_M[:, :, None] @ w_M[:, None, :]).sum(axis=0)
-    
+
 #     # 1xDxD
 #     return np.linalg.inv(cov_x_n)[None, :,:]
 
@@ -78,42 +50,129 @@ normed_X
 
 #     # DxD = DxD + 1x1 + DxD := Σ[MxDx1 @ Mx1xD|M]
 #     cov_x_n = I_D + exp_tau * (x_N[:, :, None] @ x_N[:, None, :]).sum(axis=0)
-    
+
+
 #     # 1xDxD
 #     return np.linalg.inv(cov_x_n)[None, :,:]
 # %%
-def compute_mu_x(X):
-    # X: NxD
-    # Dx1
-    return X.T.mean(axus=-1)[:, None] 
-
-def compute_mu_w(W):
-    # W: MxD
-    # Dx1
-    return W.T.mean(axus=-1)[:, None] 
-
-def compute_cov_x(cov_x, mu_x):
-    # cov_x:    DxD
-    # mu_x:     Dx1
+# Σ_xn
+def compute_sigma_x(N, exp_tau, exp_cov_w):
+    # exp_tau:      1x1
+    # exp_cov_w:    MxDxD
+    D = exp_cov_w.shape[1]
+    # DxD
+    I_D = np.eye(D)
 
     # DxD
-    return cov_x + mu_x @ mu_x.T
+    new_sigma_x = np.linalg.inv(I_D + exp_tau * exp_cov_w.sum(axis=(0)))
+    # NxDxD
+    all_sigmas = np.repeat(new_sigma_x[None], N, axis=0)
+    # Out:          NxDxD
+    return all_sigmas
 
-def compute_cov_w(cov_w, mu_w):
-    # cov_x:    DxD
-    # mu_x:     Dx1
-    
+
+# Σ_µm
+def compute_sigma_w(M, exp_tau, exp_cov_x):
+    # exp_tau:      1x1
+    # exp_cov_x:    NxDxD
+    D = exp_cov_x.shape[1]
     # DxD
-    return cov_w + mu_w @ mu_w.T
+    I_D = np.eye(D)
 
-def compute_exp_tau(a, b, N, M, Y, mu_wn, mu_x, last_part):
-    e = a + ((N*M)/2)
-    f = b + 0.5*np.sum((Y**2) - (2 * (mu_wn) @ mu_x) + last_part)
-    return e/f
+    # DxD
+    new_sigma_w = np.linalg.inv(I_D + exp_tau * exp_cov_x.sum(axis=0))
 
-def compute_final_exp(cov_w, cov_x, mu_x):
-    trace = np.diag(cov_w@cov_x)
-    result = trace + (mu_x.T @ cov_w @ mu_x)
+    # MxDxD
+    all_sigmas = np.repeat(new_sigma_w[None], M, axis=0)
+    # Out:          MxDxD
+    return all_sigmas
+
+
+def compute_mu_x(Y, exp_tau, cov_x_N, exp_w_M):
+    # Y: N x M
+    # exp_tau = 1 x 1
+    # exp_w_M: M x D
+    # sigma_x_N: N x D x D
+
+    # NxD 
+    # -- Summation over M is handled by @-multiplication
+    YxW = (Y.values @ exp_w_M)
+    # NxD => 1x1 * NxDxD * NxDx1
+    result = exp_tau * np.einsum('ijk,ij->ik', cov_x_N, YxW)
+    return result
+
+
+def compute_mu_w(Y, exp_tau, cov_w_M, exp_x_N):
+    # Y: N x M
+    # exp_tau = 1 x 1
+    # exp_w_M: N x D
+    # cov_x_n: M x D x D
+
+    # MxD 
+    # -- Summation over M is handled by @-multiplication
+    YxX = (Y.values.T @ exp_x_N)
+    # MxD => 1x1 * DxD @ MxDx1
+    result = exp_tau * np.einsum('ijk,ij->ik', cov_w_M, YxX)
+    return result
+
+
+# <xn,xn.T> = Σ_xn + µ_xn @ µ_xn.T
+def compute_exp_cov_x(cov_x_N, mu_x):
+    # cov_x:    NxDxD
+    # mu_x:     NxD
+
+    # NxDxD = NxDx1 @ Nx1xD
+    cov_mu_x_N = np.einsum('ijk,ikj->ijk', mu_x[:, None], mu_x[:, None])
+    # NxDxD = NxDxD + NxDxD
+    return cov_x_N + cov_mu_x_N
+
+
+def compute_exp_cov_w(cov_w_M, mu_w):
+    # cov_w:    MxDxD
+    # mu_w:     MxD
+
+    # NxDxD = NxDx1 @ Nx1xD
+    cov_mu_x_N = np.einsum('ijk,ikj->ijk', mu_w[:, None], mu_w[:, None])
+    # NxDxD = NxDxD + NxDxD
+    return cov_w_M + cov_mu_x_N
+
+
+def compute_exp_tau(a, b, Y, W, mu_x, last_part):
+    # a:        1x1
+    # b:        1x1
+    # Y:        NxM
+    # W:        MxD
+    # mu_x:     NxDx1
+    # last_part:NxMxDxD
+
+    # 1x1
+    N, M = Y.shape
+    e = a + ((N * M) / 2)
+
+    # NxM
+    term1 = 0.5 * np.sum((Y**2))
+    # MxN = MxD @ DxN
+    term2 = 2 * (W @ mu_x.squeeze().T)
+    f = (b + term1 - term2 + last_part).sum()
+    return e, f
+
+
+def compute_final_exp(cov_ww, sigma_x, mu_x):
+    # cov_ww:   MxDxD
+    # sigma_x:  NxDxD
+    # mu_x:     NxD
+
+    # NxMxDxD 
+    innter_trace = np.einsum('ijk,hkj->ihjk', cov_ww, sigma_x)
+    # NxMx1
+    trace = np.trace(innter_trace, axis1=-2, axis2=-1)[:, :, None]
+    # NxMxDxD = Nx1xDx1 @ 1xMxDxD @ Nx1x1xD
+    # summation = np.transpose(mu_x, axes=(
+    #     0, 2, 1))[:, None, :, :] @ cov_w[None, :, :, :] @ mu_x[:, None, :, :]
+    # NxMx1 = Nx1x1xD @ 1xMxDxD @ Nx1x1xD
+    mux_x_ww = np.einsum('ij,ijk->ik', mu_x, cov_ww)
+    mux_x_ww_x_mux = np.einsum('ijk,ji->ik', mux_x_ww, mu_x)
+    result = trace + mux_x_ww_x_mux
     return result
 
 
@@ -121,19 +180,34 @@ def probablistic_principal_component_analysis(Y, dim=3, a=1, b=1):
     N, M = Y.shape  # N-observed. M-dimensional input vectors y_n
     D = dim
     I_D = np.eye(D)
-    expected_tau = a / b
-    # W - MxD
-    w_M = stats.multivariate_normal(np.zeros(M)[:, None], I_D)
-    # I_D_m + <w_m> @ <w_m>.T
-    expected_ww = I_D + w_M @ w_M.T
-    expected_x_n = expected_tau
+    exp_tau = a / b
+    e, f = a, b
+    # MxD
+    exp_w = np.random.multivariate_normal(np.zeros(D), I_D, size=M)
+    # MxDxD
+    exp_ww = I_D + np.einsum('ijk,ikj->ijk', exp_w[:, None], exp_w[:, None])
 
-    C = (Y.values.T @ Y.values) / N
-    eigvals, eigvecs = np.linalg.eig(C)
-    n_highest_eigvecs = eigvecs[:, :dim]
-    projection = Y @ n_highest_eigvecs
-    return projection
+    for i in range(3):
+        sigma_x = compute_sigma_x(N, exp_tau, exp_ww)
+        mu_x = compute_mu_x(Y, exp_tau, sigma_x, exp_w)
 
+        exp_x = mu_x
+        exp_xx = compute_exp_cov_x(sigma_x, mu_x)
+
+        sigma_w = compute_sigma_w(M, exp_tau, exp_xx)
+        mu_w = compute_mu_w(Y, exp_tau, sigma_w, exp_x)
+
+        exp_w = mu_w
+        exp_ww = compute_exp_cov_w(sigma_w, mu_w)
+
+        last_part = compute_final_exp(exp_ww, exp_xx, exp_x)
+        e, f = compute_exp_tau(e, f, Y, exp_w, exp_x, last_part)
+        exp_tau = e / f
+
+    pass
+
+
+probablistic_principal_component_analysis(normed_X, dim=3)
 
 # %%
 fig = plt.figure(figsize=(15, 7))

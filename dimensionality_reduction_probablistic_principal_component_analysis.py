@@ -41,7 +41,7 @@ def compute_sigma_x(N, exp_tau, exp_cov_w):
     I_D = np.eye(D)
 
     # DxD
-    new_sigma_x = np.linalg.inv(I_D + exp_tau * exp_cov_w.mean(axis=(0)))
+    new_sigma_x = np.linalg.inv(I_D + exp_tau * exp_cov_w.sum(axis=(0)))
     # NxDxD
     all_sigmas = np.repeat(new_sigma_x[None], N, axis=0)
     # Out:          NxDxD
@@ -57,7 +57,7 @@ def compute_sigma_w(M, exp_tau, exp_cov_x):
     I_D = np.eye(D)
 
     # DxD
-    new_sigma_w = np.linalg.inv(I_D + exp_tau * exp_cov_x.mean(axis=0))
+    new_sigma_w = np.linalg.inv(I_D + exp_tau * exp_cov_x.sum(axis=0))
 
     # MxDxD
     all_sigmas = np.repeat(new_sigma_w[None], M, axis=0)
@@ -213,20 +213,3 @@ for cls in data_y.unique():
     ax2.view_init(30, 45)
 plt.show()
 Axes3D
-# %%
-from sklearn.decomposition import ProbabilisticPCA
-
-# %%
-prior_means = np.array([1, 4, 10, 1, 100])  # D
-M = 100
-exp_W = np.random.multivariate_normal(prior_means,
-                                      np.eye(len(prior_means)),
-                                      size=M)
-mean_W = exp_W.mean(0)
-display(mean_W)
-
-# DxM @ MxD 
-cov_W = (exp_W-mean_W).T@(exp_W-mean_W)
-display(cov_W)
-# %%
-(exp_W-mean_W).shape

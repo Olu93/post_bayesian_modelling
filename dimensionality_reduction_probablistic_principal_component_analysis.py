@@ -30,6 +30,7 @@ data_X
 normed_X = (data_X - data_X.mean()) / data_X.std()
 normed_X
 
+
 # %%
 # Σ_xn
 def compute_sigma_x(N, exp_tau, exp_cov_w):
@@ -40,7 +41,7 @@ def compute_sigma_x(N, exp_tau, exp_cov_w):
     I_D = np.eye(D)
 
     # DxD
-    new_sigma_x = np.linalg.inv(I_D + exp_tau * exp_cov_w.sum(axis=(0)))
+    new_sigma_x = np.linalg.inv(I_D + exp_tau * exp_cov_w.mean(axis=(0)))
     # NxDxD
     all_sigmas = np.repeat(new_sigma_x[None], N, axis=0)
     # Out:          NxDxD
@@ -56,7 +57,7 @@ def compute_sigma_w(M, exp_tau, exp_cov_x):
     I_D = np.eye(D)
 
     # DxD
-    new_sigma_w = np.linalg.inv(I_D + exp_tau * exp_cov_x.sum(axis=0))
+    new_sigma_w = np.linalg.inv(I_D + exp_tau * exp_cov_x.mean(axis=0))
 
     # MxDxD
     all_sigmas = np.repeat(new_sigma_w[None], M, axis=0)
@@ -184,12 +185,11 @@ def probablistic_principal_component_analysis(Y, dim=3, a=1, b=1):
 
 
 _, low_X = probablistic_principal_component_analysis(normed_X.values, dim=3)
-# %%
-low_X
-# %%
+
 fig = plt.figure(figsize=(15, 7))
 ax1, ax2 = fig.add_subplot(121), fig.add_subplot(122, projection="3d")
-_, projected_data = probablistic_principal_component_analysis(normed_X.values, dim=3)
+_, projected_data = probablistic_principal_component_analysis(normed_X.values,
+                                                              dim=3)
 projected_data = projected_data.join(data_y)
 
 for cls in data_y.unique():
@@ -217,3 +217,16 @@ Axes3D
 from sklearn.decomposition import ProbabilisticPCA
 
 # %%
+prior_means = np.array([1, 4, 10, 1, 100])  # D
+M = 100
+exp_W = np.random.multivariate_normal(prior_means,
+                                      np.eye(len(prior_means)),
+                                      size=M)
+mean_W = exp_W.mean(0)
+display(mean_W)
+
+# DxM @ MxD 
+cov_W = (exp_W-mean_W).T@(exp_W-mean_W)
+display(cov_W)
+# %%
+(exp_W-mean_W).shape

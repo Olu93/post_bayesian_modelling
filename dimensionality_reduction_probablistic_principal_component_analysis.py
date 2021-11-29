@@ -13,6 +13,7 @@ from matplotlib import cm
 import random as r
 from data import observed_data_classification, observed_data_classification_two_features
 from helper import add_bias_vector, compute_metrics, create_polinomial_bases, predict, sigmoid
+from laplace_approximation_with_taylor_expansion import Y
 from viz import plot_clustering, plot_contour_2d, plot_countours_and_points, plot_train_val_curve, plot_w_samples
 from sklearn.model_selection import train_test_split
 from collections import Counter
@@ -94,9 +95,9 @@ def compute_mu_x(Y, exp_tau, cov_x_N, exp_w_M):
     # exp_w_M: M x D
     # sigma_x_N: N x D x D
 
-    # NxD 
+    # NxD
     # -- Summation over M is handled by @-multiplication
-    YxW = (Y.values @ exp_w_M)
+    YxW = (Y @ exp_w_M)
     # NxD => 1x1 * NxDxD * NxDx1
     result = exp_tau * np.einsum('ijk,ij->ik', cov_x_N, YxW)
     return result
@@ -108,9 +109,9 @@ def compute_mu_w(Y, exp_tau, cov_w_M, exp_x_N):
     # exp_w_M: N x D
     # cov_x_n: M x D x D
 
-    # MxD 
+    # MxD
     # -- Summation over M is handled by @-multiplication
-    YxX = (Y.values.T @ exp_x_N)
+    YxX = (Y.T @ exp_x_N)
     # MxD => 1x1 * DxD @ MxDx1
     result = exp_tau * np.einsum('ijk,ij->ik', cov_w_M, YxX)
     return result
@@ -143,7 +144,7 @@ def compute_exp_tau(a, b, Y, W, mu_x, last_part):
     # Y:        NxM
     # W:        MxD
     # mu_x:     NxDx1
-    # last_part:NxMxDxD
+    # last_part:NxM
 
     # 1x1
     N, M = Y.shape
@@ -152,8 +153,8 @@ def compute_exp_tau(a, b, Y, W, mu_x, last_part):
     # NxM
     term1 = 0.5 * np.sum((Y**2))
     # MxN = MxD @ DxN
-    term2 = 2 * (W @ mu_x.squeeze().T)
-    f = (b + term1 - term2 + last_part).sum()
+    term2 = (2 * (W @ mu_x.T)).sum()
+    f = (b + term1 - term2 + last_part.sum())
     return e, f
 
 
@@ -162,16 +163,16 @@ def compute_final_exp(cov_ww, sigma_x, mu_x):
     # sigma_x:  NxDxD
     # mu_x:     NxD
 
-    # NxMxDxD 
-    innter_trace = np.einsum('ijk,hkj->ihjk', cov_ww, sigma_x)
+    # NxMxDxD
+    innter_trace = np.einsum('ijk,hkj->hijk', cov_ww, sigma_x)
     # NxMx1
-    trace = np.trace(innter_trace, axis1=-2, axis2=-1)[:, :, None]
+    trace = np.trace(innter_trace, axis1=-2, axis2=-1)
     # NxMxDxD = Nx1xDx1 @ 1xMxDxD @ Nx1x1xD
     # summation = np.transpose(mu_x, axes=(
     #     0, 2, 1))[:, None, :, :] @ cov_w[None, :, :, :] @ mu_x[:, None, :, :]
     # NxMx1 = Nx1x1xD @ 1xMxDxD @ Nx1x1xD
-    mux_x_ww = np.einsum('ij,ijk->ik', mu_x, cov_ww)
-    mux_x_ww_x_mux = np.einsum('ijk,ji->ik', mux_x_ww, mu_x)
+    mux_x_ww = np.einsum('ij,hjk->ihk', mu_x, cov_ww)
+    mux_x_ww_x_mux = np.einsum('ihj,kj->ih', mux_x_ww, mu_x)
     result = trace + mux_x_ww_x_mux
     return result
 
@@ -204,15 +205,16 @@ def probablistic_principal_component_analysis(Y, dim=3, a=1, b=1):
         e, f = compute_exp_tau(e, f, Y, exp_w, exp_x, last_part)
         exp_tau = e / f
 
-    pass
+    return exp_w, pd.DataFrame(exp_x)
 
 
-probablistic_principal_component_analysis(normed_X, dim=3)
-
+_, low_X = probablistic_principal_component_analysis(normed_X.values, dim=3)
+# %%
+low_X
 # %%
 fig = plt.figure(figsize=(15, 7))
 ax1, ax2 = fig.add_subplot(121), fig.add_subplot(122, projection="3d")
-projected_data = probablistic_principal_component_analysis(normed_X, dim=3)
+_, projected_data = probablistic_principal_component_analysis(normed_X.values, dim=3)
 projected_data = projected_data.join(data_y)
 
 for cls in data_y.unique():
@@ -236,3 +238,4 @@ for cls in data_y.unique():
     ax2.view_init(30, 45)
 plt.show()
 Axes3D
+# %%

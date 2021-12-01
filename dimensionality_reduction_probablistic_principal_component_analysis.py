@@ -88,7 +88,7 @@ def compute_mu_w(Y, exp_tau, cov_w_M, exp_x_N):
     # MxD
     # -- Summation over M is handled by @-multiplication
     YxX = (Y.T @ exp_x_N)
-    # MxD => 1x1 * DxD @ MxDx1
+    # MxD => 1x1 * MxDx1 @ DxD
     result = exp_tau * np.einsum('ijk,ij->ik', cov_w_M, YxX)
     return result
 
@@ -124,13 +124,13 @@ def compute_exp_tau(a, b, Y, W, mu_x, last_part):
 
     # 1x1
     N, M = Y.shape
-    e = a + ((N * M) / 2)
+    e = a + 0.5 * (N * M)
 
     # NxM
-    term1 = 0.5 * np.sum((Y**2))
-    # MxN = MxD @ DxN
-    term2 = (2 * (W @ mu_x.T)).sum()
-    f = (b + term1 - term2 + last_part.sum())
+    term1 = Y**2
+    # NxM = (MxD @ DxN).T
+    term2 = (2 * (W @ mu_x.T)).T
+    f = (b + 0.5 * (term1 - term2 + last_part).sum())
     return e, f
 
 
@@ -154,42 +154,48 @@ def compute_final_exp(cov_ww, sigma_x, mu_x):
 
 
 def probablistic_principal_component_analysis(Y, dim=3, a=1, b=1):
+    approx_posteriors = []
     N, M = Y.shape  # N-observed. M-dimensional input vectors y_n
     D = dim
     I_D = np.eye(D)
     exp_tau = a / b
     e, f = a, b
     # MxD
-    exp_w = np.random.multivariate_normal(np.zeros(D), I_D, size=M)
+    exp_W = np.random.multivariate_normal(np.zeros(D), I_D, size=M)
     # MxDxD
-    exp_ww = I_D + np.einsum('ijk,ikj->ijk', exp_w[:, None], exp_w[:, None])
+    exp_WW = I_D + np.einsum('ijk,ikj->ijk', exp_W[:, None], exp_W[:, None])
 
     for i in range(2):
-        sigma_x = compute_sigma_x(N, exp_tau, exp_ww)
-        mu_x = compute_mu_x(Y, exp_tau, sigma_x, exp_w)
+        sigma_X = compute_sigma_x(N, exp_tau, exp_WW)
+        mu_X = compute_mu_x(Y, exp_tau, sigma_X, exp_W)
 
-        exp_x = mu_x
-        exp_xx = compute_exp_cov_x(sigma_x, mu_x)
+        exp_X = mu_X
+        exp_xx = compute_exp_cov_x(sigma_X, mu_X)
 
-        sigma_w = compute_sigma_w(M, exp_tau, exp_xx)
-        mu_w = compute_mu_w(Y, exp_tau, sigma_w, exp_x)
+        sigma_W = compute_sigma_w(M, exp_tau, exp_xx)
+        mu_W = compute_mu_w(Y, exp_tau, sigma_W, exp_X)
 
-        exp_w = mu_w
-        exp_ww = compute_exp_cov_w(sigma_w, mu_w)
+        exp_W = mu_W
+        exp_WW = compute_exp_cov_w(sigma_W, mu_W)
 
-        last_part = compute_final_exp(exp_ww, exp_xx, exp_x)
-        e, f = compute_exp_tau(e, f, Y, exp_w, exp_x, last_part)
+        last_part = compute_final_exp(exp_WW, exp_xx, exp_X)
+        e, f = compute_exp_tau(e, f, Y, exp_W, exp_X, last_part)
         exp_tau = e / f
 
-    return exp_w, pd.DataFrame(exp_x)
+        approx_posteriors.append({
+            "Q_X": (mu_X, sigma_X),
+            "Q_W": (mu_W, sigma_W),
+            "Q_T": (e, f),
+        })
+    return exp_W, pd.DataFrame(exp_X), approx_posteriors
 
 
-_, low_X = probablistic_principal_component_analysis(normed_X.values, dim=3)
+_, low_X, _ = probablistic_principal_component_analysis(normed_X.values, dim=3)
 
 fig = plt.figure(figsize=(15, 7))
 ax1, ax2 = fig.add_subplot(121), fig.add_subplot(122, projection="3d")
-_, projected_data = probablistic_principal_component_analysis(normed_X.values,
-                                                              dim=3)
+_, projected_data, _ = probablistic_principal_component_analysis(
+    normed_X.values, dim=3)
 projected_data = projected_data.join(data_y)
 
 for cls in data_y.unique():
@@ -212,49 +218,52 @@ for cls in data_y.unique():
     ax2.legend()
     ax2.view_init(30, 45)
 plt.show()
-Axes3D
+
+
 # %%
 def compute_sigma_x_Z(N, exp_tau, exp_cov_w, Z):
     # exp_tau:      1x1
     # exp_cov_w:    MxDxD
+    # Z:            NxM
     D = exp_cov_w.shape[1]
     # DxD
     I_D = np.eye(D)
 
-    # DxD
-    new_sigma_x = np.linalg.inv(I_D + exp_tau * exp_cov_w.sum(axis=(0)))
     # NxDxD
-    all_sigmas = np.repeat(new_sigma_x[None], N, axis=0)
-    # Out:          NxDxD
-    return all_sigmas
+    exp_cov_w_Z = np.einsum('nm,mde->nde', Z, exp_cov_w)
+    # NxDxD
+    new_sigma_x = np.linalg.inv(I_D + exp_tau * (exp_cov_w_Z))
+
+    return new_sigma_x
 
 
 # Σ_µm
 def compute_sigma_w_Z(M, exp_tau, exp_cov_x, Z):
     # exp_tau:      1x1
     # exp_cov_x:    NxDxD
+    # Z:            NxM
     D = exp_cov_x.shape[1]
     # DxD
     I_D = np.eye(D)
 
-    # DxD
-    new_sigma_w = np.linalg.inv(I_D + exp_tau * exp_cov_x.sum(axis=0))
+    # MxDxD
+    exp_cov_x_Z = np.einsum('nm,nde->mde', Z, exp_cov_x)
 
     # MxDxD
-    all_sigmas = np.repeat(new_sigma_w[None], M, axis=0)
-    # Out:          MxDxD
-    return all_sigmas
+    new_sigma_w = np.linalg.inv(I_D + exp_tau * exp_cov_x_Z)
+
+    return new_sigma_w
 
 
 def compute_mu_x_Z(Y, exp_tau, cov_x_N, exp_w_M, Z):
-    # Y: N x M
-    # exp_tau = 1 x 1
-    # exp_w_M: M x D
-    # sigma_x_N: N x D x D
+    # Y:            N x M
+    # exp_tau:      1 x 1
+    # exp_w_M:      M x D
+    # Z:            N x M
 
     # NxD
     # -- Summation over M is handled by @-multiplication
-    YxW = (Y @ exp_w_M)
+    YxW = ((Z * Y) @ exp_w_M)
     # NxD => 1x1 * NxDxD * NxDx1
     result = exp_tau * np.einsum('ijk,ij->ik', cov_x_N, YxW)
     return result
@@ -268,38 +277,235 @@ def compute_mu_w_Z(Y, exp_tau, cov_w_M, exp_x_N, Z):
 
     # MxD
     # -- Summation over M is handled by @-multiplication
-    YxX = (Y.T @ exp_x_N)
+    YxX = ((Z.T * Y.T) @ exp_x_N)
     # MxD => 1x1 * DxD @ MxDx1
     result = exp_tau * np.einsum('ijk,ij->ik', cov_w_M, YxX)
     return result
 
 
-def probablistic_principal_component_analysis_w_missing_values(Y, dim=3, a=1, b=1):
+def compute_missing_Yh_params(mu_w_M, mu_x_N, last_part, tau):
+    # mu_w_M:       MxD
+    # mu_x_N:       NxD
+    # last_part:    NxM
+    # tau:          1x1
+
+    # NxM
+    exp_Yh = (mu_w_M @ mu_x_N.T).T
+    # NxM
+    exp_Yh_var = last_part + (1 / tau) - (exp_Yh**2)
+    return (exp_Yh, exp_Yh_var)
+
+
+def compute_exp_tau_Z(a, b, Y, W, mu_x, last_part, Z):
+    # a:        1x1
+    # b:        1x1
+    # Y:        NxM
+    # W:        MxD
+    # mu_x:     NxDx1
+    # last_part:NxM
+    # Z:        NxM
+
+    # 1x1
+    e = a + 0.5 * Z.sum()
+
+    # NxM
+    term1 = Y**2
+    # NxM = (MxD @ DxN).T
+    term2 = (2 * (W @ mu_x.T)).T
+    f = (b + 0.5 * (Z * (term1 - term2 + last_part)).sum())
+    return e, f
+
+
+def probablistic_principal_component_analysis_w_missing_values(
+    Y,
+    dim=3,
+    a=1,
+    b=1,
+    num_iter=10,
+):
+    approx_posteriors = []
     N, M = Y.shape  # N-observed. M-dimensional input vectors y_n
+    Z = np.isreal(Y) * 1
     D = dim
     I_D = np.eye(D)
     exp_tau = a / b
     e, f = a, b
+
     # MxD
-    exp_w = np.random.multivariate_normal(np.zeros(D), I_D, size=M)
+    exp_W = np.random.multivariate_normal(np.zeros(D), I_D, size=M)
     # MxDxD
-    exp_ww = I_D + np.einsum('ijk,ikj->ijk', exp_w[:, None], exp_w[:, None])
+    exp_WW = I_D + np.einsum('ijk,ikj->ijk', exp_W[:, None], exp_W[:, None])
 
-    for i in range(2):
-        sigma_x = compute_sigma_x(N, exp_tau, exp_ww)
-        mu_x = compute_mu_x(Y, exp_tau, sigma_x, exp_w)
+    for i in range(num_iter):
+        sigma_X = compute_sigma_x_Z(N, exp_tau, exp_WW, Z)
+        mu_X = compute_mu_x_Z(Y, exp_tau, sigma_X, exp_W, Z)
 
-        exp_x = mu_x
-        exp_xx = compute_exp_cov_x(sigma_x, mu_x)
+        exp_X = mu_X
+        exp_XX = compute_exp_cov_x(sigma_X, mu_X)
 
-        sigma_w = compute_sigma_w(M, exp_tau, exp_xx)
-        mu_w = compute_mu_w(Y, exp_tau, sigma_w, exp_x)
+        sigma_W = compute_sigma_w_Z(M, exp_tau, exp_XX, Z)
+        mu_W = compute_mu_w_Z(Y, exp_tau, sigma_W, exp_X, Z)
 
-        exp_w = mu_w
-        exp_ww = compute_exp_cov_w(sigma_w, mu_w)
+        exp_W = mu_W
+        exp_WW = compute_exp_cov_w(sigma_W, mu_W)
 
-        last_part = compute_final_exp(exp_ww, exp_xx, exp_x)
-        e, f = compute_exp_tau(e, f, Y, exp_w, exp_x, last_part)
+        last_part = compute_final_exp(exp_WW, exp_XX, exp_X)
+        e, f = compute_exp_tau_Z(e, f, Y, exp_W, exp_X, last_part, Z)
         exp_tau = e / f
 
-    return exp_w, pd.DataFrame(exp_x)
+        approx_posteriors.append({
+            "Q_X": (mu_X, sigma_X),
+            "Q_W": (mu_W, sigma_W),
+            "Q_T": (e, f),
+        })
+    return exp_W, pd.DataFrame(exp_X), approx_posteriors
+
+
+_, low_X, _ = probablistic_principal_component_analysis_w_missing_values(
+    normed_X.values, dim=3)
+
+fig = plt.figure(figsize=(15, 7))
+ax1, ax2 = fig.add_subplot(121), fig.add_subplot(122, projection="3d")
+_, projected_data, _ = probablistic_principal_component_analysis_w_missing_values(
+    normed_X.values,
+    dim=3,
+)
+projected_data = projected_data.join(data_y)
+
+for cls in data_y.unique():
+    members = projected_data.iloc[:, 3] == cls
+    c_projected_data = projected_data.loc[members]
+    ax1.scatter(
+        x=c_projected_data.iloc[:, 0],
+        y=c_projected_data.iloc[:, 1],
+        # c=c_projected_data.iloc[:, 3],
+        label=f"Class {cls}",
+    )
+    ax1.legend()
+    ax2.scatter(
+        xs=c_projected_data.iloc[:, 0],
+        ys=c_projected_data.iloc[:, 1],
+        zs=c_projected_data.iloc[:, 2],
+        # c=c_projected_data.iloc[:, 3],
+        label=f"Class {cls}",
+    )
+    ax2.legend()
+    ax2.view_init(30, 45)
+plt.show()
+
+
+# %%
+def compute_sigma_x_lZ(N, exp_tau, exp_cov_w, Z):
+    # exp_tau:      1x1
+    # exp_cov_w:    MxDxD
+    # Z:            NxM
+    D = exp_cov_w.shape[1]
+    # DxD
+    I_D = np.eye(D)
+
+    # NxDxD
+    exp_cov_w_Z = np.repeat(exp_cov_w.sum(0)[None], N, axis=0)
+    # NxDxD
+    new_sigma_x = np.linalg.inv(I_D + exp_tau * (exp_cov_w_Z))
+
+    return new_sigma_x
+
+def compute_exp_y_h(exp_w, exp_x, tau, mu_x, sigma_x):
+    pass
+
+
+def compute_mu_x_lZ(Y, exp_tau, cov_x_N, exp_w_M, Z):
+    # Y:            N x M
+    # exp_tau:      1 x 1
+    # exp_w_M:      M x D
+    # Z:            N x M
+
+    exp_Y = None
+    Yo = (Z * Y)
+    Yh = ((1 - Z) * exp_Y)
+    YHO = Yo + Yh
+    # NxD
+    # -- Summation over M is handled by @-multiplication
+    YHOxW = YHO @ exp_w_M
+    # NxD => 1x1 * NxDxD * NxDx1
+    result = exp_tau * np.einsum('ijk,ij->ik', cov_x_N, YHOxW)
+    return result
+
+
+def probablistic_principal_component_analysis_w_latent_missing_values(
+    Y,
+    dim=3,
+    a=1,
+    b=1,
+    num_iter=10,
+):
+    approx_posteriors = []
+    N, M = Y.shape  # N-observed. M-dimensional input vectors y_n
+    Z = np.isreal(Y) * 1
+    D = dim
+    I_D = np.eye(D)
+    exp_tau = a / b
+    e, f = a, b
+
+    # MxD
+    exp_W = np.random.multivariate_normal(np.zeros(D), I_D, size=M)
+    # MxDxD
+    exp_WW = I_D + np.einsum('ijk,ikj->ijk', exp_W[:, None], exp_W[:, None])
+
+    for i in range(num_iter):
+        sigma_X = compute_sigma_x_lZ(N, exp_tau, exp_WW, Z)
+        # Needs to compute a pre mu_X
+        mu_X = compute_mu_x_lZ(Y, exp_tau, sigma_X, exp_W, Z)
+
+        exp_X = mu_X
+        exp_XX = compute_exp_cov_x(sigma_X, mu_X)
+
+        sigma_W = compute_sigma_w_Z(M, exp_tau, exp_XX, Z)
+        mu_W = compute_mu_w_Z(Y, exp_tau, sigma_W, exp_X, Z)
+
+        exp_W = mu_W
+        exp_WW = compute_exp_cov_w(sigma_W, mu_W)
+
+        last_part = compute_final_exp(exp_WW, exp_XX, exp_X)
+        e, f = compute_exp_tau_Z(e, f, Y, exp_W, exp_X, last_part, Z)
+        exp_tau = e / f
+
+        approx_posteriors.append({
+            "Q_X": (mu_X, sigma_X),
+            "Q_W": (mu_W, sigma_W),
+            "Q_T": (e, f),
+        })
+    return exp_W, pd.DataFrame(exp_X), approx_posteriors
+
+
+_, low_X, _ = probablistic_principal_component_analysis_w_latent_missing_values(
+    normed_X.values, dim=3)
+
+fig = plt.figure(figsize=(15, 7))
+ax1, ax2 = fig.add_subplot(121), fig.add_subplot(122, projection="3d")
+_, projected_data, _ = probablistic_principal_component_analysis_w_latent_missing_values(
+    normed_X.values,
+    dim=3,
+)
+projected_data = projected_data.join(data_y)
+
+for cls in data_y.unique():
+    members = projected_data.iloc[:, 3] == cls
+    c_projected_data = projected_data.loc[members]
+    ax1.scatter(
+        x=c_projected_data.iloc[:, 0],
+        y=c_projected_data.iloc[:, 1],
+        # c=c_projected_data.iloc[:, 3],
+        label=f"Class {cls}",
+    )
+    ax1.legend()
+    ax2.scatter(
+        xs=c_projected_data.iloc[:, 0],
+        ys=c_projected_data.iloc[:, 1],
+        zs=c_projected_data.iloc[:, 2],
+        # c=c_projected_data.iloc[:, 3],
+        label=f"Class {cls}",
+    )
+    ax2.legend()
+    ax2.view_init(30, 45)
+plt.show()

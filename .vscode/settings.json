@@ -1,4 +1,3 @@
 {
-    "python.pythonPath": "/home/bestname/anaconda3/envs/ds/bin/python",
-    "python.formatting.provider": "yapf"
+    "python.pythonPath": "/home/bestname/anaconda3/envs/ds/bin/python"
 }

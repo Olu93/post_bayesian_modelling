@@ -15,9 +15,11 @@ from helper import add_bias_vector, create_polinomial_bases
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from IPython import get_ipython
-
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_absolute_percentage_error, r2_score
+from tqdm.notebook import tqdm
 from viz import animate_3d_fig
-
+import seaborn as sns
 # %%
 get_ipython().run_line_magic("matplotlib", "inline")
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
@@ -62,10 +64,7 @@ ax.plot_trisurf(data[:, 0], data[:, 1], data[:, 2])
 # data = pd.DataFrame(data).sort_values([0, 1]).drop_duplicates().values
 
 # %%
-train_X, val_X, train_y, val_y = train_test_split(data[:, :-1],
-                                                  data[:, -1],
-                                                  test_size=0.2,
-                                                  shuffle=True)
+train_X, val_X, train_y, val_y = train_test_split(data[:, :-1], data[:, -1], test_size=0.2, shuffle=True)
 scaler_X = MinMaxScaler()
 scaler_X.fit(data[:, :-1])
 scaler_y = MinMaxScaler((-1, 1))
@@ -95,21 +94,21 @@ def gaussian_kernel(alpha, gamma):
     return kernel
 
 
-def linear_kernel(alpha=0, gamma=0):
+def linear_kernel(alpha=1, gamma=1):
     def kernel(X1, X2):
+        gamma = 1
         dist_matrix = np.einsum('ij,kj->ik', X1, X2)
         # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
-        return dist_matrix
+        return alpha * (1 + dist_matrix)**gamma
 
     return kernel
 
 
-def polynomial_kernel(alpha=0, gamma=1):
-    assert type(gamma) == int, f"Gamma needs to be an int but is {gamma}"
+def polynomial_kernel(alpha=1, gamma=1):
     def kernel(X1, X2):
         dist_matrix = np.einsum('ij,kj->ik', X1, X2)
         # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
-        return (1+dist_matrix)**gamma
+        return alpha * (1 + dist_matrix)**gamma
 
     return kernel
 
@@ -128,29 +127,15 @@ def gaussian_process(X, y, X_, noise=0.0, kernel=gaussian_kernel(1, 0.05)):
     return mu_pred, sigma_pred
 
 
-def plot_predictions_2D(val_y,
-                        pred_y,
-                        pred_cov_y,
-                        x,
-                        ax,
-                        skip,
-                        num_samples=10):
+def plot_predictions_2D(val_y, pred_y, pred_cov_y, x, ax, skip, num_samples=10):
     len_x = len(x)
     r_x = x
     std_y = np.sqrt(np.diag(pred_cov_y))
 
     ax.plot(r_x, val_y.flat, color="red", alpha=1, label="true")
     ax.plot(r_x, pred_y.flat, color="blue", alpha=1, label="pred")
-    ax.scatter(r_x[::skip],
-               val_y[::skip].flat,
-               color="red",
-               alpha=1,
-               label="true")
-    ax.scatter(r_x[::skip],
-               pred_y[::skip].flat,
-               color="blue",
-               alpha=1,
-               label="pred")
+    ax.scatter(r_x[::skip], val_y[::skip].flat, color="red", alpha=1, label="true")
+    ax.scatter(r_x[::skip], pred_y[::skip].flat, color="blue", alpha=1, label="pred")
     ax.fill_between(
         r_x,
         pred_y.flatten() - 3 * std_y,
@@ -177,20 +162,13 @@ def plot_predictions_2D(val_y,
     ax.legend()
 
 
-tmp_kernel = polynomial_kernel(0.3, 10)
-new_val_x = np.repeat(np.linspace(scaler_X.data_min_.min(),
-                                  scaler_X.data_max_.max(), 100)[None],
-                      2,
-                      axis=0).T
+tmp_kernel = polynomial_kernel(0.3, 11)
+new_val_x = np.repeat(np.linspace(scaler_X.data_min_.min(), scaler_X.data_max_.max(), 100)[None], 2, axis=0).T
 # new_val_x[:, 0] = 1
 new_val_y = true_func(new_val_x[:, 0], new_val_x[:, 1])[:, None]
 tmp_x = scaler_X.transform(new_val_x)
 tmp_y = scaler_y.transform(new_val_y)
-pred_y, pred_cov_y = gaussian_process(train_X,
-                                      train_y,
-                                      tmp_x,
-                                      noise=0.01,
-                                      kernel=tmp_kernel)
+pred_y, pred_cov_y = gaussian_process(train_X, train_y, tmp_x, noise=0.07, kernel=tmp_kernel)
 fig = plt.figure(figsize=(10, 7))
 
 ax = fig.add_subplot(111)
@@ -206,11 +184,7 @@ plot_predictions_2D(
 )
 # %%
 tmp_kernel = gaussian_kernel(0.3, 0.01)
-pred_y, pred_cov_y = gaussian_process(train_X,
-                                      train_y,
-                                      val_X,
-                                      noise=0.1,
-                                      kernel=tmp_kernel)
+pred_y, pred_cov_y = gaussian_process(train_X, train_y, val_X, noise=0.1, kernel=tmp_kernel)
 
 tmp_x = val_X
 # tmp_x = pd.DataFrame(val_X).sort_values([1]).values
@@ -244,12 +218,7 @@ def plot_predictions_3D(val_y, pred_y, pred_cov_y, x, ax, skip):
         label="true")
     surf1.set_edgecolor("red")
     # surf1.set_sort_zpos(-1)
-    surf2 = ax.plot_trisurf(r_x,
-                            r_y,
-                            pred_y.flat,
-                            color="white",
-                            alpha=0.7,
-                            label="pred")
+    surf2 = ax.plot_trisurf(r_x, r_y, pred_y.flat, color="white", alpha=0.7, label="pred")
     surf2.set_edgecolor("blue")
     surfs = [surf1, surf2]
     surf3dplot_legend_fix(surfs)
@@ -258,4 +227,58 @@ def plot_predictions_3D(val_y, pred_y, pred_cov_y, x, ax, skip):
 
 plot_predictions_3D(val_y, pred_y, pred_cov_y, tmp_x, ax, skip)
 
-animate_3d_fig(fig, ax, 45, 100, blit=True)
+# animate_3d_fig(fig, ax, 45, 100, blit=True)
+# %%
+from multiprocessing import Pool, pool
+from itertools import product
+# workers = Pool(4)
+
+alphas = np.power(10.0, np.arange(-3, 2))
+gammas = np.linspace(0.001, 2, 6)
+noises = np.power(10.0, np.arange(-5, 1))
+repeats = 10
+folds = 10
+results = np.zeros((repeats, 3, len(noises), len(alphas), len(gammas)))
+pg = tqdm(total=results.size)
+
+# params = product()
+for i, (tr_ids, te_ids) in enumerate(KFold(repeats).split(train_X)):
+    for j, alpha in enumerate(alphas):
+        for k, gamma in enumerate(gammas):
+            for n, noise in enumerate(noises):
+                X_train, X_test = train_X[tr_ids], train_X[te_ids]
+                y_train, y_test = train_y[tr_ids], train_y[te_ids]
+                # Linear
+                kernel = linear_kernel(alpha, gamma)
+                y_pred, y_pred_cov = gaussian_process(X_train, y_train, X_test, noise=noise, kernel=kernel)
+                results[i, 0, n, j, k] = mean_absolute_percentage_error(y_test, y_pred)
+                # Polynomial
+                kernel = polynomial_kernel(alpha, gamma)
+                y_pred, y_pred_cov = gaussian_process(X_train, y_train, X_test, noise=noise, kernel=kernel)
+                results[i, 1, n, j, k] = mean_absolute_percentage_error(y_test, y_pred)
+                # Gaussian
+                kernel = gaussian_kernel(alpha, gamma)
+                y_pred, y_pred_cov = gaussian_process(X_train, y_train, X_test, noise=noise, kernel=kernel)
+                results[i, 2, n, j, k] = mean_absolute_percentage_error(y_test, y_pred)
+                pg.update(3)
+
+# %%
+mean_results = results.mean(axis=0)
+n_kernels, n_noises, n_alphas, n_gammas = mean_results.shape
+gammas_names = [f"{g:.3f}" for g in gammas]
+alphas_names = [f"{g:.3f}" for g in alphas]
+fig, axes = plt.subplots(n_noises, n_kernels)
+fig.set_size_inches((15, 30))
+kernel_names = ["Linear", "Polynomial", "Gaussian"]
+for k in range(n_kernels):
+    for n in range(n_noises):
+        ax = axes[n, k]
+        data = mean_results[k, n]
+        hm = sns.heatmap(data, ax=ax, yticklabels=alphas, xticklabels=gammas_names)
+        ax.set_ylabel("Alpha")
+        ax.set_xlabel("Gamma")
+        ax.set_title(f"{kernel_names[k]} w noise {noises[n]}")
+fig.tight_layout()
+plt.show()
+
+# %%

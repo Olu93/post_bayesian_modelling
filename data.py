@@ -42,7 +42,7 @@ def d2_function_polynomial(x, y, p1, p2):
 
 
 def true_function_linear(x, p1=1):
-    return (3 * (x**p1)) - 1
+    return (3 * (np.sin(x)**p1)) - 1
 
 
 def true_function_sigmoid(x, y, w1, w2):
@@ -62,24 +62,22 @@ def true_function_softmax(X, W):
     return probabilities_per_class.squeeze()
 
 
-def observed_data(d: int = 10, p1=2, p2=3):
+def observed_data(d: int = 10, p1=2, p2=3, variance=2.5):
     data = np.random.randn(d, 2) * 3
     x, y = data[:, 0], data[:, 1]
-    variance = 2.5
+
     return x, y, true_function_polynomial(x, y, p1,
                                           p2) + np.random.randn(d) * variance
 
 
-def observed_data_wobbly(d: int = 10):
-    data = np.random.randn(d, 2) * 1
-    x, y = data[:, 0], data[:, 1]
-    variance = 2.5
-    return x, y, ((np.sin(x) * 5) / np.exp(y)) + np.random.randn(d) * variance
+def observed_data_wobbly(d: int = 10, p1=3, p2=2, variance=2.5):
+    x, y = np.random.uniform(-10, 10, size=(2,d))
+    return x, y, ((np.sin(x) * p1) / y) + np.random.randn(d) * variance
 
 
-def observed_data_linear(d: int = 10, p1=1):
-    data = np.random.randn(d, 2) * 3
-    x, y = data[:, 0], data[:, 1]
+def observed_data_linear(d: int = 10, p1=1, variance=3):
+    data = (np.random.uniform(size=d) - 0.5) * variance
+    x = data
     return x, true_function_linear(x, p1) + np.random.randn(d)
 
 
@@ -112,14 +110,14 @@ ax.set_zlabel('Z Label')
 
 plt.show()
 # %%
-fig = plt.figure()
+fig = plt.figure(figsize=(15,15))
 ax = fig.add_subplot(projection='3d')
 
-n = 50
+n = 500
 
 # For each set of style and range settings, plot n random points in the box
 # defined by x in [23, 32], y in [0, 100], z in [zlow, zhigh].
-xs, ys, zs = observed_data_wobbly(n)
+xs, ys, zs = observed_data_wobbly(n, 5, 0, 10)
 ax.scatter(xs, ys, zs)
 
 ax.set_xlabel('X Label')
@@ -185,6 +183,7 @@ plt.show()
 plt.hist(P_c[:, 3])
 plt.show()
 
+
 # %%
 def observed_data_classification_two_features(num_data,
                                               mean_data_0,
@@ -229,26 +228,24 @@ ax = plt.gca()
 plot_countours_and_points(ax, X, y, means, covs)
 plt.show()
 
+
 # %%
-def observed_data_classification_two_features_nonlinear(num_data,
-                                              mean_data_0,
-                                              cov_data_0,
-                                              seed=42):
+def observed_data_classification_two_features_nonlinear(
+        num_data, mean_data_0, cov_data_0, seed=42):
     np.random.seed(seed)
     rotate_matrix = np.identity(
         2) + np.ones_like(cov_data_0) * (np.identity(2) - 1)
 
     mean_data_1 = np.copy(mean_data_0)
-    cov_data_1 = cov_data_0/0.9
-    mean_data_2 = np.copy(mean_data_0) 
+    cov_data_1 = cov_data_0 / 0.9
+    mean_data_2 = np.copy(mean_data_0)
     mean_data_2[1] += 7
-    cov_data_2 = (cov_data_0 / 2) * rotate_matrix  
-
+    cov_data_2 = (cov_data_0 / 2) * rotate_matrix
 
     X_0 = np.random.multivariate_normal(mean_data_0, cov_data_0, size=num_data)
     X_1 = np.random.multivariate_normal(mean_data_1, cov_data_1, size=num_data)
     X_1 = X_1 @ (mean_data.sum() * np.eye(2))
-    inner_circle = np.sqrt(np.square(mean_data).sum())*2
+    inner_circle = np.sqrt(np.square(mean_data).sum()) * 2
     points_circle = np.sqrt(np.square(X_1).sum(axis=1))
     X_1 = X_1[points_circle > inner_circle]
     X_2 = np.random.multivariate_normal(mean_data_2, cov_data_2, size=num_data)

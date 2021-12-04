@@ -1,7 +1,9 @@
 import numpy as np
 from scipy import stats
 from matplotlib.patches import Ellipse
-
+from matplotlib import animation
+import matplotlib.pyplot as plt
+from IPython.display import display, HTML
 
 def plot_w_samples(all_w_hats,
                    ax,
@@ -222,3 +224,25 @@ def plot_clustering(X, assigments, ax, centroids=None):
         )
     ax.legend()
     return ax
+
+def animate_3d_fig(fig, ax, frames=90, intervall=50, figsize=(10,10), blit=True):
+    skip = 360//frames
+    fig.set_size_inches(figsize)
+    def init():
+        return fig,
+
+
+    def animate(i):
+        ax.view_init(elev=11., azim=i*skip)
+        return fig,
+
+
+    # Animate
+    anim = animation.FuncAnimation(fig,
+                               animate,
+                               init_func=init,
+                               frames=frames,
+                               interval=intervall,
+                               blit=blit)
+    plt.close()
+    return display(HTML(anim.to_jshtml()))

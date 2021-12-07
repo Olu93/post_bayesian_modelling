@@ -175,7 +175,7 @@ def gaussian_process_binary_classification_MAP(X_val, y_val, X_train, y_train, k
 # k_func = covariance_kernel()
 # k_func = minkovsky_kernel(2, 0.1)
 # k_func = linear_kernel(0.001, 0.1)
-k_func = gaussian_kernel(1, 0.1)
+k_func = gaussian_kernel(1, 0.01)
 preds_MAP, mu_f_val_MAP, sigma_f_val_MAP, info_MAP = gaussian_process_binary_classification_MAP(
     val_X,
     val_y,
@@ -233,7 +233,7 @@ def gaussian_process_binary_class_sampling(X_val, y_val, X_train, y_train, kerne
 
 n_iter = 30
 S = 42
-k_func = gaussian_kernel(1, 0.1)
+k_func = gaussian_kernel(1, 0.01)
 preds_Sampling, mu_f_val_Sampling, sigma_f_val_Sampling, info_Sampling = gaussian_process_binary_class_sampling(
     val_X,
     val_y,
@@ -303,7 +303,7 @@ def gaussian_process_binary_class_laplace(X_val, y_val, X_train, y_train, kernel
 
 n_iter = 30
 S = 42
-k_func = gaussian_kernel(1, 0.1)
+k_func = gaussian_kernel(1, 0.01)
 preds_Laplace, mu_f_val_Laplace, sigma_f_val_Laplace, info_Laplace = gaussian_process_binary_class_laplace(
     val_X,
     val_y,

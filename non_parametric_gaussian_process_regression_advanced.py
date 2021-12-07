@@ -20,6 +20,7 @@ from sklearn.metrics import mean_absolute_percentage_error, r2_score
 from tqdm.notebook import tqdm
 from viz import animate_3d_fig
 import seaborn as sns
+from sklearn.linear_model import LinearRegression
 # %%
 get_ipython().run_line_magic("matplotlib", "inline")
 np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
@@ -97,7 +98,7 @@ def gaussian_kernel(alpha, gamma):
 def linear_kernel(alpha=1, gamma=1):
     def kernel(X1, X2):
         gamma = 1
-        dist_matrix = np.einsum('ij,kj->ik', X1, X2)
+        dist_matrix = np.einsum('nj,kj->nk', X1, X2)
         # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
         return alpha * (1 + dist_matrix)**gamma
 
@@ -106,7 +107,7 @@ def linear_kernel(alpha=1, gamma=1):
 
 def polynomial_kernel(alpha=1, gamma=1):
     def kernel(X1, X2):
-        dist_matrix = np.einsum('ij,kj->ik', X1, X2)
+        dist_matrix = np.einsum('nj,kj->nk', X1, X2)
         # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
         return alpha * (1 + dist_matrix)**gamma
 
@@ -229,55 +230,65 @@ plot_predictions_3D(val_y, pred_y, pred_cov_y, tmp_x, ax, skip)
 
 # animate_3d_fig(fig, ax, 45, 100, blit=True)
 # %%
-from multiprocessing import Pool, pool
+# LINUX ONLY!!!
+from multiprocessing import Pool, pool, cpu_count
 from itertools import product
-# workers = Pool(4)
+
+workers = Pool(4)
 
 alphas = np.power(10.0, np.arange(-3, 2))
 gammas = np.linspace(0.001, 2, 6)
 noises = np.power(10.0, np.arange(-5, 1))
-repeats = 10
+n_repeats = 10
 folds = 10
-results = np.zeros((repeats, 3, len(noises), len(alphas), len(gammas)))
-pg = tqdm(total=results.size)
+pg = tqdm(total=np.product((n_repeats, 3, len(noises), len(alphas), len(gammas))))
+kernel_functions = [linear_kernel, polynomial_kernel, gaussian_kernel]
 
-# params = product()
-for i, (tr_ids, te_ids) in enumerate(KFold(repeats).split(train_X)):
-    for j, alpha in enumerate(alphas):
-        for k, gamma in enumerate(gammas):
-            for n, noise in enumerate(noises):
-                X_train, X_test = train_X[tr_ids], train_X[te_ids]
-                y_train, y_test = train_y[tr_ids], train_y[te_ids]
-                # Linear
-                kernel = linear_kernel(alpha, gamma)
-                y_pred, y_pred_cov = gaussian_process(X_train, y_train, X_test, noise=noise, kernel=kernel)
-                results[i, 0, n, j, k] = mean_absolute_percentage_error(y_test, y_pred)
-                # Polynomial
-                kernel = polynomial_kernel(alpha, gamma)
-                y_pred, y_pred_cov = gaussian_process(X_train, y_train, X_test, noise=noise, kernel=kernel)
-                results[i, 1, n, j, k] = mean_absolute_percentage_error(y_test, y_pred)
-                # Gaussian
-                kernel = gaussian_kernel(alpha, gamma)
-                y_pred, y_pred_cov = gaussian_process(X_train, y_train, X_test, noise=noise, kernel=kernel)
-                results[i, 2, n, j, k] = mean_absolute_percentage_error(y_test, y_pred)
-                pg.update(3)
+results_json = []
+
+
+def execute_single_experiment(args):
+    X_train, X_test, y_train, y_test, i, kernel_func, noise, alpha, gamma = args
+    kernel = kernel_func(alpha, gamma)
+    y_pred, y_pred_cov = gaussian_process(X_train, y_train, X_test, noise=noise, kernel=kernel)
+    return {
+        "Iteration": i,
+        "Kernel": kernel_func.__name__,
+        "Noise": noise,
+        "Alpha": alpha,
+        "Gamma": gamma,
+        "MAPE": mean_absolute_percentage_error(y_test, y_pred),
+        "R2": r2_score(y_test, y_pred)
+    }
+
+
+for i, (tr_ids, te_ids) in enumerate(KFold(n_repeats).split(train_X)):
+    X_train, X_test = train_X[tr_ids], train_X[te_ids]
+    y_train, y_test = train_y[tr_ids], train_y[te_ids]
+    params = product([X_train], [X_test], [y_train], [y_test], [i], kernel_functions, noises, alphas, gammas)
+    for result in workers.imap_unordered(execute_single_experiment, params, chunksize=200):
+        results_json.append(result)
+        pg.update(1)
 
 # %%
-mean_results = results.mean(axis=0)
-n_kernels, n_noises, n_alphas, n_gammas = mean_results.shape
+results = pd.DataFrame(results_json)
+mean_results = results.groupby("Noise Kernel Alpha Gamma".split()).mean().drop("Iteration", axis=1)
+mean_results = mean_results.reset_index()
+mean_results
+# %%
 gammas_names = [f"{g:.3f}" for g in gammas]
 alphas_names = [f"{g:.3f}" for g in alphas]
-fig, axes = plt.subplots(n_noises, n_kernels)
-fig.set_size_inches((15, 30))
-kernel_names = ["Linear", "Polynomial", "Gaussian"]
-for k in range(n_kernels):
-    for n in range(n_noises):
-        ax = axes[n, k]
-        data = mean_results[k, n]
-        hm = sns.heatmap(data, ax=ax, yticklabels=alphas, xticklabels=gammas_names)
-        ax.set_ylabel("Alpha")
-        ax.set_xlabel("Gamma")
-        ax.set_title(f"{kernel_names[k]} w noise {noises[n]}")
+fig, axes = plt.subplots(len(noises), len(kernel_functions))
+fig.set_size_inches((20, 30))
+for index, df in mean_results.groupby("Noise Kernel".split()):
+    n = list(noises).index(index[0])
+    k = list([kn.__name__ for kn in kernel_functions]).index(index[1])
+    ax = axes[n, k]
+    data = df.pivot(index='Alpha', columns='Gamma', values='MAPE')
+    hm = sns.heatmap(data, ax=ax, yticklabels=alphas, xticklabels=gammas_names)
+    ax.set_ylabel("Alpha")
+    ax.set_xlabel("Gamma")
+    ax.set_title(f"{index[1]} w noise {noises[n]}")
 fig.tight_layout()
 plt.show()
 

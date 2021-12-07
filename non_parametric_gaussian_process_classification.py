@@ -31,16 +31,16 @@ np.set_printoptions(linewidth=100, formatter=dict(float=lambda x: "%.3g" % x))
 n = 500
 variance = 0.1
 space = 10
-n_iter = 30
-
-data = np.vstack(np.array(observed_data_binary(n)).T)
+n_iter = 10
+w1, w2, std, noise = 2, -3, 10, 0.1
+data = np.vstack(np.array(observed_data_binary(n, w1, w2, std, noise=noise)).T)
 # fig = plt.figure(figsize=(10, 10))
 # ax = fig.add_subplot(111, projection='3d')
 # ax.plot_trisurf(data[:, 0], data[:, 1], data[:, 2])
 # data = pd.DataFrame(data).sort_values([0, 1]).drop_duplicates().values
 
 # %%
-train_X, val_X, train_y, val_y = train_test_split(data[:, :-1], data[:, -1], test_size=0.2, shuffle=True)
+train_X, val_X, train_y, val_y = train_test_split(data[:, :-1], data[:, -1], test_size=0.8, shuffle=True)
 scaler_X = StandardScaler()
 scaler_X.fit(data[:, :-1])
 scaler_y = MinMaxScaler((0, 1))
@@ -62,6 +62,15 @@ train_X.mean()
 def linear_kernel(alpha=1, gamma=1):
     def kernel(X1, X2):
         gamma = 1
+        dist_matrix = np.einsum('nj,jk->nk', X1, X2.T)
+        # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
+        return alpha * (1 + dist_matrix)**gamma
+
+    return kernel
+
+
+def polynomial_kernel(alpha=1, gamma=1):
+    def kernel(X1, X2):
         dist_matrix = np.einsum('nj,jk->nk', X1, X2.T)
         # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
         return alpha * (1 + dist_matrix)**gamma
@@ -139,7 +148,7 @@ def compute_posterior_f_MAP(X, X_star, f_pred, kernel):
     return mu_f_star, sigma_f_star
 
 
-def gaussian_process_binary_classification_MAP(X_val, y_val, X_train, y_train, kernel, max_iter=20):
+def gaussian_process_binary_classification_MAP(X_val, y_val, X_train, y_train, kernel, max_iter=20, num_samples=None):
     def predict_y(mu_f):
         return sigmoid(mu_f) > 0.5
 
@@ -231,7 +240,6 @@ def gaussian_process_binary_class_sampling(X_val, y_val, X_train, y_train, kerne
     return y_pred, mu_f_val, sigma_f_val, (all_accs, all_gradients)
 
 
-n_iter = 30
 S = 42
 k_func = gaussian_kernel(1, 0.01)
 preds_Sampling, mu_f_val_Sampling, sigma_f_val_Sampling, info_Sampling = gaussian_process_binary_class_sampling(
@@ -301,7 +309,6 @@ def gaussian_process_binary_class_laplace(X_val, y_val, X_train, y_train, kernel
     return y_pred, mu_f_val, sigma_f_val, (all_accs, all_gradients)
 
 
-n_iter = 30
 S = 42
 k_func = gaussian_kernel(1, 0.01)
 preds_Laplace, mu_f_val_Laplace, sigma_f_val_Laplace, info_Laplace = gaussian_process_binary_class_laplace(
@@ -317,8 +324,229 @@ preds_Laplace, mu_f_val_Laplace, sigma_f_val_Laplace, info_Laplace = gaussian_pr
 plt.plot(info_Laplace[0])
 plt.show()
 
+
 # %%
-fig = plt.figure()
-ax = fig.add_subplot(111, projection="3d")
-ax.scatter(val_X[:, 0], val_X[:, 1], mu_f_val_Laplace, c=preds_Laplace)
-animate_3d_fig(fig, ax)
+def show_binary_classification_animated(val_X, val_y, preds_Laplace, mu_f_val_Laplace, title=""):
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection="3d")
+    show_binary_classification(val_X, val_y, preds_Laplace, mu_f_val_Laplace, title, ax)
+    animate_3d_fig(fig, ax)
+
+
+def show_binary_classification(X, true_y, pred_y, mu_f, title, ax):
+    cls1_members = (true_y == 1).flatten()
+    cls0_members = (true_y == 0).flatten()
+    ax.scatter(
+        X[cls1_members, 0],
+        X[cls1_members, 1],
+        mu_f[cls1_members],
+        c=pred_y[cls1_members],
+        label="True class 1",
+        marker="x",
+        cmap="Set1",
+    )
+    ax.scatter(
+        X[cls0_members, 0],
+        X[cls0_members, 1],
+        mu_f[cls0_members],
+        c=pred_y[cls0_members],
+        label="True class 0",
+        marker="o",
+        cmap="Set1",
+    )
+    ax.set_title(title)
+    ax.set_xlabel('X1')
+    ax.set_ylabel('X2')
+    ax.set_zlabel('f')
+    ax.legend()
+    return ax
+
+
+def compute_all_methods(n_iter, train_X, val_X, train_y, val_y, k_func, S):
+    preds_MAP, mu_f_val_MAP, sigma_f_val_MAP, info_MAP = gaussian_process_binary_classification_MAP(
+        val_X,
+        val_y,
+        train_X,
+        train_y,
+        k_func,
+        max_iter=n_iter,
+        num_samples=S,
+    )
+    preds_Sampling, mu_f_val_Sampling, sigma_f_val_Sampling, info_Sampling = gaussian_process_binary_class_sampling(
+        val_X,
+        val_y,
+        train_X,
+        train_y,
+        k_func,
+        max_iter=n_iter,
+        num_samples=S,
+    )
+    preds_Laplace, mu_f_val_Laplace, sigma_f_val_Laplace, info_Laplace = gaussian_process_binary_class_laplace(
+        val_X,
+        val_y,
+        train_X,
+        train_y,
+        k_func,
+        max_iter=n_iter,
+        num_samples=S,
+    )
+
+    return (
+        preds_MAP,
+        mu_f_val_MAP,
+        sigma_f_val_MAP,
+        info_MAP,
+        preds_Sampling,
+        mu_f_val_Sampling,
+        sigma_f_val_Sampling,
+        info_Sampling,
+        preds_Laplace,
+        mu_f_val_Laplace,
+        sigma_f_val_Laplace,
+        info_Laplace,
+    )
+
+
+def plot_all_methods_with_diff_params(
+    n_iter,
+    train_X,
+    val_X,
+    train_y,
+    val_y,
+    kernel,
+    S,
+    k_funcs_params,
+    axes,
+):
+    for idx, axes_row in enumerate(axes):
+        alpha, gamma = k_funcs_params[idx]
+        preds_MAP, mu_f_val_MAP, sigma_f_MAP, info_MAP, preds_Sampling, mu_f_val_Sampling, sigma_f_Sampling, info_Sampling, preds_Laplace, mu_f_val_Laplace, sigma_f_Laplace, info_Laplace = compute_all_methods(
+            n_iter,
+            train_X,
+            val_X,
+            train_y,
+            val_y,
+            kernel(alpha, gamma),
+            S,
+        )
+        show_binary_classification(
+            val_X,
+            val_y,
+            preds_MAP,
+            mu_f_val_MAP,
+            f"MAP - α={alpha} γ={gamma}\nLoss:{info_MAP[0][-1]:.2f}",
+            axes_row[0],
+        )
+        show_binary_classification(
+            val_X,
+            val_y,
+            preds_Sampling,
+            mu_f_val_Sampling,
+            f"Sampling - α={alpha} γ={gamma}\nLoss:{info_Sampling[0][-1]:.2f}",
+            axes_row[1],
+        )
+        show_binary_classification(
+            val_X,
+            val_y,
+            preds_Laplace,
+            mu_f_val_Laplace,
+            f"Laplace - α={alpha} γ={gamma}\nLoss:{info_Laplace[0][-1]:.2f}",
+            axes_row[2],
+        )
+
+    return preds_MAP, mu_f_val_MAP, preds_Sampling, mu_f_val_Sampling, preds_Laplace, mu_f_val_Laplace
+
+
+# %%
+k_funcs_params = [(1, 0.9), (1, 0.1), (1, 0.01), (1, 0.001)]
+num_k_funcs = len(k_funcs_params)
+fig, axes = plt.subplots(num_k_funcs, 3, subplot_kw={'projection': '3d'})
+fig.set_size_inches((15, 5 * num_k_funcs))
+n_iter = 10
+
+preds_MAP, mu_f_val_MAP, preds_Sampling, mu_f_val_Sampling, preds_Laplace, mu_f_val_Laplace = plot_all_methods_with_diff_params(
+    n_iter,
+    train_X,
+    val_X,
+    train_y,
+    val_y,
+    gaussian_kernel,
+    S,
+    k_funcs_params,
+    axes,
+)
+for ax in axes.flatten():
+    ax.view_init(15, 30)
+
+fig.tight_layout()
+plt.show()
+# %%
+k_funcs_params = [(1, 1), (0.1, 1), (0.01, 1), (0.001, 1)]
+num_k_funcs = len(k_funcs_params)
+fig, axes = plt.subplots(num_k_funcs, 3, subplot_kw={'projection': '3d'})
+fig.set_size_inches((15, 5 * num_k_funcs))
+n_iter = 50
+
+preds_MAP, mu_f_val_MAP, preds_Sampling, mu_f_val_Sampling, preds_Laplace, mu_f_val_Laplace = plot_all_methods_with_diff_params(
+    n_iter,
+    train_X,
+    val_X,
+    train_y,
+    val_y,
+    linear_kernel,
+    S,
+    k_funcs_params,
+    axes,
+)
+for ax in axes.flatten():
+    ax.view_init(15, 30)
+
+fig.tight_layout()
+plt.show()
+# %%
+tmp_a= 1
+k_funcs_params = [(tmp_a, 1), (tmp_a, 3), (tmp_a, 5), (tmp_a, 7)]
+num_k_funcs = len(k_funcs_params)
+fig, axes = plt.subplots(num_k_funcs, 3, subplot_kw={'projection': '3d'})
+fig.set_size_inches((15, 5 * num_k_funcs))
+n_iter = 10
+
+preds_MAP, mu_f_val_MAP, preds_Sampling, mu_f_val_Sampling, preds_Laplace, mu_f_val_Laplace = plot_all_methods_with_diff_params(
+    n_iter,
+    train_X,
+    val_X,
+    train_y,
+    val_y,
+    polynomial_kernel,
+    S,
+    k_funcs_params,
+    axes,
+)
+for ax in axes.flatten():
+    ax.view_init(15, 30)
+
+fig.tight_layout()
+plt.show()
+# %%
+show_binary_classification_animated(
+    val_X,
+    val_y,
+    preds_MAP,
+    mu_f_val_MAP,
+    "MAP",
+)
+show_binary_classification_animated(
+    val_X,
+    val_y,
+    preds_Sampling,
+    mu_f_val_Sampling,
+    "Sampling",
+)
+show_binary_classification_animated(
+    val_X,
+    val_y,
+    preds_Laplace,
+    mu_f_val_Laplace,
+    "Laplace",
+)
+# %%

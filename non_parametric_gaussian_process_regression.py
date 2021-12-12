@@ -83,39 +83,38 @@ train_X.mean()
 
 
 # %%
-
-# Incomplete!!! -- Almost done
-def neural_network_kernel(pi=1, gammas=None):
+def gaussian_kernel(alpha, gamma):
     def kernel(X1, X2):
-        lr = LinearRegression()
-        # (N x M+1)
-        X1_w_bias = add_bias_vector(X1)
-        # (K x M+1)
-        X2_w_bias = add_bias_vector(X2)
-        # (M+1 x 1)
-        lr.fit(X1_w_bias, X2)
-        # (M+1 x M+1) @ IDENTITY
-        W = lr.coef_ @ np.eye(len(gammas))
-        # (N x M+1) = (N x M+1) @ (M+1 x M+1)
-        X1W = X1_w_bias @ W
-        # (K x M+1) = (K x M+1) @ (M+1 x M+1)
-        X2W = X2_w_bias @ W
-        # (N x 1) <= (N x K) <= (N x K x M+1) = (N x M+1) @ (K x M+1)
-        X1WX2 = np.diag(2 * np.einsum('nm,km->nk', X1W, X2_w_bias))
-        # (N x 1) <= (N x N) <= (N x N x M+1) = (N x M+1) @ (N x M+1)
-        X1WX1 = np.diag(2 * np.einsum('nm,km->nk', X1W, X1_w_bias))
-        # (K x 1) <= (K x K) <= (K x K x M+1) = (K x M+1) @ (K x M+1)
-        X2WX2 = np.diag(2 * np.einsum('nm,km->nk', X2W, X2_w_bias))
-        # (N x K) <= (N x 1) / (N x K)
-        denominator = np.sqrt((1 + X1WX1) @ (1 + X2WX2))
-        dist_matrix = X1WX2 / denominator
-        # (N x K)
-        return (2 / pi) * np.arcsin(dist_matrix)
+        diffs = X1[:, None] - X2
+        sq_diffs = np.square(diffs)
+
+        dist_matrix = sq_diffs.sum(axis=-1)
+        # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
+        return (np.square(alpha) * np.exp((-1 / (2 * gamma)) * dist_matrix))
 
     return kernel
 
 
-def gaussian_process(X, y, X_, noise=0.0, kernel=None):
+def linear_kernel(alpha=1, gamma=1):
+    def kernel(X1, X2):
+        gamma = 1
+        dist_matrix = np.einsum('nj,kj->nk', X1, X2)
+        # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
+        return alpha * (1 + dist_matrix)**gamma
+
+    return kernel
+
+
+def polynomial_kernel(alpha=1, gamma=1):
+    def kernel(X1, X2):
+        dist_matrix = np.einsum('nj,kj->nk', X1, X2)
+        # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
+        return alpha * (1 + dist_matrix)**gamma
+
+    return kernel
+
+
+def gaussian_process(X, y, X_, noise=0.0, kernel=gaussian_kernel(1, 0.05)):
     C = kernel(X, X)
     C_ = kernel(X_, X_)
     R = kernel(X, X_)

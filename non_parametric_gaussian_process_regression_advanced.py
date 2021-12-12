@@ -81,41 +81,76 @@ num_features = train_X.shape[1]
 
 train_X.mean()
 
-
 # %%
-def gaussian_kernel(alpha, gamma):
-    def kernel(X1, X2):
+
+# Incomplete!!! -- Almost done
+# def neural_network_kernel(pi=1, gammas=None):
+#     def kernel(X1, X2):
+#         lr = LinearRegression()
+#         # (N x M+1)
+#         X1_w_bias = add_bias_vector(X1)
+#         # (K x M+1)
+#         X2_w_bias = add_bias_vector(X2)
+#         # (M+1 x 1)
+#         lr.fit(X1_w_bias, X2)
+#         # (M+1 x M+1) @ IDENTITY
+#         W = lr.coef_ @ np.eye(len(gammas))
+#         # (N x M+1) = (N x M+1) @ (M+1 x M+1)
+#         X1W = X1_w_bias @ W
+#         # (K x M+1) = (K x M+1) @ (M+1 x M+1)
+#         X2W = X2_w_bias @ W
+#         # (N x 1) <= (N x K) <= (N x K x M+1) = (N x M+1) @ (K x M+1)
+#         X1WX2 = np.diag(2 * np.einsum('nm,km->nk', X1W, X2_w_bias))
+#         # (N x 1) <= (N x N) <= (N x N x M+1) = (N x M+1) @ (N x M+1)
+#         X1WX1 = np.diag(2 * np.einsum('nm,km->nk', X1W, X1_w_bias))
+#         # (K x 1) <= (K x K) <= (K x K x M+1) = (K x M+1) @ (K x M+1)
+#         X2WX2 = np.diag(2 * np.einsum('nm,km->nk', X2W, X2_w_bias))
+#         # (N x K) <= (N x 1) / (N x K)
+#         denominator = np.sqrt((1 + X1WX1) @ (1 + X2WX2))
+#         dist_matrix = X1WX2 / denominator
+#         # (N x K)
+#         return (2 / pi) * np.arcsin(dist_matrix)
+
+
+#     return kernel
+def automatic_relevance_detection_kernel(alpha):
+    def kernel(X1, X2, gamma_d):
+
         diffs = X1[:, None] - X2
         sq_diffs = np.square(diffs)
-
-        dist_matrix = sq_diffs.sum(axis=-1)
-        # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
-        return (np.square(alpha) * np.exp((-1 / (2 * gamma)) * dist_matrix))
+        weighted_differences = gamma_d * sq_diffs
+        alpha * np.exp(-np.sum(weighted_differences, axis=-1))
 
     return kernel
 
 
-def linear_kernel(alpha=1, gamma=1):
-    def kernel(X1, X2):
-        gamma = 1
-        dist_matrix = np.einsum('nj,kj->nk', X1, X2)
-        # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
-        return alpha * (1 + dist_matrix)**gamma
-
-    return kernel
-
-
-def polynomial_kernel(alpha=1, gamma=1):
-    def kernel(X1, X2):
-        dist_matrix = np.einsum('nj,kj->nk', X1, X2)
-        # dist_matrix = np.sum(np.square(X1), axis=1).reshape(-1, 1) + np.sum(np.square(X2), axis=1) - 2 * np.dot(X1, X2.T)
-        return alpha * (1 + dist_matrix)**gamma
-
-    return kernel
+# https://math.stackexchange.com/questions/1395699/differentiation-of-1-norm-of-a-vector
+# https://en.wikipedia.org/wiki/Matrix_calculus
+def log_marginal_likelihood_function(y, C, noise):
+    N = len(y)
+    # F = C.shape[0]
+    term1 = -(N / 2) * np.log(2 * np.pi)
+    term2 = -(1 / 2) * np.log(np.linalg.norm(C + noise * np.eye(N)))
+    term3 = -(1 / 2) * y.T @ np.linalg.inv(C + noise * np.eye(N)) @ y
+    likelihood = term1 + term2 + term3
+    return likelihood
 
 
-def gaussian_process(X, y, X_, noise=0.0, kernel=gaussian_kernel(1, 0.05)):
-    C = kernel(X, X)
+def d1(X1, X2, y, kernel):
+    D_sq = np.square(X1[:, None] - X2)
+    C = kernel(X1, X2, y)
+    return (1 / (2 * np.abs(C))) @ np.trace(np.sign(C) @ D_sq @ C) @ D_sq @ C 
+
+def d2(X1, X2, y, kernel):
+    D_sq = np.square(X1[:, None] - X2)
+    C = kernel(X1, X2, y)
+    return (1 / (2 * np.abs(C))) @ np.trace(np.sign(C) @ D_sq @ C) @ D_sq @ C 
+
+
+def gaussian_process(X, y, X_, noise=0.0, kernel=None):
+    gamma_d = np.random.uniform(size=(1, X.shape[1]))
+    C = kernel(X, X, gamma_d)
+
     C_ = kernel(X_, X_)
     R = kernel(X, X_)
     f = y
